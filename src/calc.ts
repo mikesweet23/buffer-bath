@@ -42,10 +42,10 @@ export type Inputs = {
   flowOverridden: boolean;
   lossOverrideEnabled: boolean;
   lossOverrideKw: number;
-  includePipework: boolean;
-  pipeLength: number;
-  pipeDiameterMm: number;
-  pipeU: number;
+  includePipework?: boolean;
+  pipeLength?: number;
+  pipeDiameterMm?: number;
+  pipeU?: number;
   projectReference: string;
 };
 
@@ -87,9 +87,9 @@ export const DEFAULTS: Inputs = {
   lossOverrideEnabled: false,
   lossOverrideKw: 0,
   includePipework: false,
-  pipeLength: 20,
-  pipeDiameterMm: 76.1,
-  pipeU: 0.8,
+  pipeLength: 0,
+  pipeDiameterMm: 0,
+  pipeU: 0,
   projectReference: "",
 };
 
@@ -581,9 +581,8 @@ export function computePlanner(input: Inputs): PlannerResult {
         : geometricVolume
       : Math.max(0, safeNumber(input.measuredVolume));
   const wallArea = sideArea + (input.baseExposed ? baseArea : 0);
-  const pipeDiameterM = Math.max(0, safeNumber(input.pipeDiameterMm)) / 1000;
   const pipeArea = input.includePipework
-    ? Math.PI * pipeDiameterM * Math.max(0, safeNumber(input.pipeLength))
+    ? Math.PI * (Math.max(0, safeNumber(input.pipeDiameterMm ?? 0)) / 1000) * Math.max(0, safeNumber(input.pipeLength ?? 0))
     : 0;
   const fluidMass = (volumeLitres / 1000) * density;
   const thermalCapacity = fluidMass * specificHeat + Math.max(0, safeNumber(input.steelMass)) * 0.5;
@@ -624,7 +623,9 @@ export function computePlanner(input: Inputs): PlannerResult {
   const rawBreakdownAt = (temperature: number, airCase: AirCase): Omit<LossBreakdown, "overridden"> => {
     const process = Math.max(0, safeNumber(input.additionalLoad));
     const pipeDelta = Math.abs(temperature - ambient);
-    const pipework = (Math.max(0, safeNumber(input.pipeU)) * pipeArea * pipeDelta) / 1000;
+    const pipework = input.includePipework
+      ? (Math.max(0, safeNumber(input.pipeU ?? 0)) * pipeArea * pipeDelta) / 1000
+      : 0;
 
     if (input.application !== "tank") {
       const surface = pipework;

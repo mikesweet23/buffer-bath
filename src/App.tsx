@@ -738,7 +738,6 @@ export default function Home() {
                       { label: "Convection", value: result.selectedBreakdown.convection, colour: "var(--amber)" },
                       { label: "Radiation", value: result.selectedBreakdown.radiation, colour: "var(--coral)" },
                       { label: "Closed cover", value: result.selectedBreakdown.lid, colour: "var(--cool)" },
-                      { label: "Pipework", value: result.selectedBreakdown.pipework, colour: "var(--purple)" },
                       { label: "Additional process", value: result.selectedBreakdown.process, colour: "#7B8CDE" },
                     ]
                       .filter((item) => item.value > 0.001)
@@ -813,12 +812,12 @@ export default function Home() {
             </div>
             <p className="section-intro">
               Closed circuit mode uses the total system water volume. Tank surface losses are
-              excluded unless insulated pipework is included below.
+              excluded.
             </p>
             <div className="closed-circuit-inputs">
               <NumberField label="Start temperature" value={input.startTemperature} onChange={(value) => patch("startTemperature", value)} unit="°C" step={1} />
               <NumberField label="Target temperature" value={input.finishTemperature} onChange={(value) => patch("finishTemperature", value)} unit="°C" step={1} />
-              <NumberField label="Ambient temperature" value={input.ambient} onChange={(value) => patch("ambient", value)} unit="°C" step={1} hint="Used if insulated pipework losses are included." />
+              <NumberField label="Ambient temperature" value={input.ambient} onChange={(value) => patch("ambient", value)} unit="°C" step={1} />
             </div>
           </section>
         )}
@@ -997,7 +996,7 @@ export default function Home() {
                   <strong>{formatDuration(result.recoveryMinutes)}</strong>
                   <small>
                     {input.recoveryMode === "available"
-                      ? `${formatDuration(result.noLossMinutes)} with no standing or pipework load`
+                      ? `${formatDuration(result.noLossMinutes)} with no standing load`
                       : result.targetFlowLimited
                         ? `Current flow cannot deliver this duty within ${format(input.desiredMinutes, 0)} minutes`
                         : `${format(input.desiredMinutes, 0)} minute target including selected loads`}
@@ -1075,7 +1074,7 @@ export default function Home() {
               <b>Advanced assumptions</b>
               <small>
                 Glycol, fluid properties
-                {input.application === "tank" ? ", shell mass, evaporation and pipework" : " and insulated pipework"}
+                {input.application === "tank" ? ", shell mass and evaporation" : ""}
               </small>
             </span>
             <span className="summary-plus">+</span>
@@ -1242,26 +1241,6 @@ export default function Home() {
               <strong>Limits of the exchanger and pump model:</strong> Enter the duty available at the actual glycol concentration, operating temperatures and achievable flow. The calculator does not automatically predict pump flow reduction, pressure drop, fouling or exchanger performance changes caused by glycol. Verify these with the equipment manufacturer.
             </p>
           </div>
-          <div className="pipework-block">
-            <label className="toggle-row">
-              <span>
-                <b>Include insulated pipework losses</b>
-                <small>U × π × OD × length × (fluid − ambient). Relevant for long primary runs.</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={input.includePipework}
-                onChange={(event) => patch("includePipework", event.target.checked)}
-              />
-            </label>
-            {input.includePipework ? (
-              <div className="advanced-grid">
-                <NumberField label="Pipe length" value={input.pipeLength} onChange={(value) => patch("pipeLength", value)} unit="m" step={1} min={0} />
-                <NumberField label="Pipe outside diameter" value={input.pipeDiameterMm} onChange={(value) => patch("pipeDiameterMm", value)} unit="mm" step={0.1} min={0} />
-                <NumberField label="Pipework U-value" value={input.pipeU} onChange={(value) => patch("pipeU", value)} unit="W/m²K" step={0.05} min={0} hint="Indicative insulated steel pipe; replace with the specified U-value." />
-              </div>
-            ) : null}
-          </div>
           <div className="method-note">
             <b>Calculation basis &amp; engineering notes</b>
             <p>
@@ -1271,7 +1250,7 @@ export default function Home() {
               reheat must not run all pumps.
             </p>
             <p>
-              Heat-up is reported with insulation / evaporation / pipework losses and again with
+              Heat-up is reported with insulation / evaporation losses and again with
               no losses. Insulation losses use the selected U-values and can be overridden as a
               kW figure at target temperature.
             </p>

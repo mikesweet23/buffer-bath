@@ -280,13 +280,10 @@ describe("7. Heating and cooling correctly account for heat loss or heat gain", 
       ambient: 25,
       availableDuty: 50,
       designDeltaT: 6,
-      includePipework: true,
-      pipeLength: 50,
-      pipeDiameterMm: 76.1,
-      pipeU: 1.5,
+      additionalLoad: 5, // constant opposing continuous load / gain
     });
     expect(res.isCooling).toBe(true);
-    expect(res.selectedBreakdown.pipework).toBeGreaterThan(0);
+    expect(res.selectedBreakdown.process).toBeGreaterThan(0);
     expect(res.recoveryMinutes).toBeGreaterThan(res.noLossMinutes);
   });
 });
@@ -459,7 +456,7 @@ describe("11. Existing geometry, construction, shell-mass, and manual overrides 
 });
 
 describe("12. Test against the reference example", () => {
-  it("evaluates reference case: 5000 L, 16°C to 60°C, 120 kW, 20 K design ΔT, 80°C source, 3 K min approach, open top with agitation, 1.1 W/m²K walls, exposed base, 16°C ambient, 55% RH, no shell mass, insulated pipework 20 m at 76.1 mm OD and 0.8 W/m²K", () => {
+  it("evaluates reference case: 5000 L, 16°C to 60°C, 120 kW, 20 K design ΔT, 80°C source, 3 K min approach, open top with agitation, 1.1 W/m²K walls, exposed base, 16°C ambient, 55% RH, no shell mass", () => {
     const input: Inputs = {
       ...DEFAULTS,
       application: "tank",
@@ -493,10 +490,6 @@ describe("12. Test against the reference example", () => {
       flowOverridden: false,
       lossOverrideEnabled: false,
       lossOverrideKw: 0,
-      includePipework: true,
-      pipeLength: 20,
-      pipeDiameterMm: 76.1,
-      pipeU: 0.8,
       projectReference: "Reference Case 5000L",
     };
 

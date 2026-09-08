@@ -106,9 +106,9 @@ export function buildReportHtml(input: Inputs, result: PlannerResult) {
       : "";
 
   const pipework = input.includePipework
-    ? row("Insulated pipework", `${format(input.pipeLength, 1)} m × Ø ${format(input.pipeDiameterMm, 1)} mm, U ${format(input.pipeU, 2)} W/m²K`) +
+    ? row("Insulated pipework", `${format(input.pipeLength ?? 0, 1)} m × Ø ${format(input.pipeDiameterMm ?? 0, 1)} mm, U ${format(input.pipeU ?? 0, 2)} W/m²K`) +
       row("Pipework loss at target", `${format(result.selectedBreakdown.pipework, 2)} kW`)
-    : row("Insulated pipework", "Not included");
+    : "";
 
   return `<!doctype html>
 <html lang="en-GB">
@@ -179,7 +179,7 @@ export function buildReportHtml(input: Inputs, result: PlannerResult) {
     ${section(
       "Losses and fluid",
       `<table>${row("Insulation losses", lossNote)}
-      ${row("Calculated surface / pipework", `${format(result.selectedBreakdown.calculatedSurface, 2)} kW`)}
+      ${row("Calculated surface losses", `${format(result.selectedBreakdown.calculatedSurface, 2)} kW`)}
       ${pipework}
       ${row("Fluid model", fluidNote)}
       ${
