@@ -12,6 +12,7 @@ import {
   format,
   formatDuration,
   glycolMixProperties,
+  roundTo,
   type AirCase,
   type Application,
   type Inputs,
@@ -437,7 +438,9 @@ export default function Home() {
   };
 
   const displayedFlow =
-    input.flowUnit === "m3h" ? result.circulationM3h : result.circulationM3h / 3.6;
+    input.flowUnit === "m3h"
+      ? roundTo(result.circulationM3h, 2)
+      : roundTo(result.circulationM3h / 3.6, 3);
 
   return (
     <main>
@@ -766,7 +769,7 @@ export default function Home() {
                             ...current,
                             lossOverrideEnabled: event.target.checked,
                             lossOverrideKw: event.target.checked
-                              ? result.selectedBreakdown.calculatedSurface
+                              ? roundTo(result.selectedBreakdown.calculatedSurface, 2)
                               : current.lossOverrideKw,
                           }))
                         }
@@ -885,6 +888,7 @@ export default function Home() {
                   unit={input.flowUnit === "m3h" ? "m³/h" : "l/s"}
                   step={0.1}
                   min={0}
+                  readOnly={!input.flowOverridden}
                   badge={input.flowOverridden ? "Overridden" : "Calculated"}
                   hint={
                     input.flowOverridden
@@ -918,7 +922,7 @@ export default function Home() {
                       setInput((current) => ({
                         ...current,
                         flowOverridden: false,
-                        circulation: result.calculatedFlowM3h,
+                        circulation: roundTo(result.calculatedFlowM3h, 3),
                       }))
                     }
                   >
@@ -932,7 +936,7 @@ export default function Home() {
                       setInput((current) => ({
                         ...current,
                         flowOverridden: true,
-                        circulation: result.calculatedFlowM3h,
+                        circulation: roundTo(result.calculatedFlowM3h, 3),
                       }))
                     }
                   >
@@ -1073,7 +1077,7 @@ export default function Home() {
             </label>
             <NumberField
               label="Fluid density"
-              value={input.fluidOverridden ? input.density : result.density}
+              value={input.fluidOverridden ? input.density : roundTo(result.density, 1)}
               onChange={(value) => overrideFluid("density", value)}
               unit="kg/m³"
               step={1}
@@ -1083,7 +1087,7 @@ export default function Home() {
             />
             <NumberField
               label="Specific heat"
-              value={input.fluidOverridden ? input.specificHeat : result.specificHeat}
+              value={input.fluidOverridden ? input.specificHeat : roundTo(result.specificHeat, 3)}
               onChange={(value) => overrideFluid("specificHeat", value)}
               unit="kJ/kgK"
               step={0.001}

@@ -193,6 +193,23 @@ describe("heat-up with and without losses", () => {
     expect(highLoss.noLossMinutes).toBeCloseTo(base.noLossMinutes, 0);
   });
 
+  it("does not apply tank insulation override to closed primary circuits", () => {
+    const result = computePlanner({
+      ...DEFAULTS,
+      application: "lphw",
+      measuredVolume: 5000,
+      startTemperature: 20,
+      finishTemperature: 80,
+      availableDuty: 120,
+      designDeltaT: 20,
+      flowOverridden: false,
+      lossOverrideEnabled: true,
+      lossOverrideKw: 40,
+    });
+    expect(result.selectedBreakdown.overridden).toBe(false);
+    expect(result.selectedBreakdown.total).toBe(0);
+  });
+
   it("gates live results until tank construction is selected", () => {
     const waiting = computePlanner({ ...DEFAULTS, construction: "" });
     const ready = computePlanner(tankInput());

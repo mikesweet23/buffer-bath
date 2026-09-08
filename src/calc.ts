@@ -199,6 +199,12 @@ export function formatDuration(minutes: number) {
   return `${hours} hr ${mins.toString().padStart(2, "0")} min`;
 }
 
+export function roundTo(value: number, digits: number) {
+  if (!Number.isFinite(value)) return value;
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
 export function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -474,7 +480,7 @@ export function computePlanner(input: Inputs): PlannerResult {
 
   const breakdownAt = (temperature: number, airCase: AirCase): LossBreakdown => {
     const raw = rawBreakdownAt(temperature, airCase);
-    if (!input.lossOverrideEnabled) {
+    if (!input.lossOverrideEnabled || input.application !== "tank") {
       return { ...raw, overridden: false };
     }
     const targetDelta = finishTemperature - ambient;
