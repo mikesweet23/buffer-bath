@@ -37,14 +37,15 @@ export type Inputs = {
   specificHeat: number;
   steelMass: number;
   glycolPercent: number;
+  fluidLocation?: "both" | "circuit-only";
   fluidOverridden: boolean;
   flowOverridden: boolean;
   lossOverrideEnabled: boolean;
   lossOverrideKw: number;
-  includePipework: boolean;
-  pipeLength: number;
-  pipeDiameterMm: number;
-  pipeU: number;
+  includePipework?: boolean;
+  pipeLength?: number;
+  pipeDiameterMm?: number;
+  pipeU?: number;
   projectReference: string;
 };
 
@@ -80,14 +81,15 @@ export const DEFAULTS: Inputs = {
   specificHeat: 4.182,
   steelMass: 0,
   glycolPercent: 0,
+  fluidLocation: "both",
   fluidOverridden: false,
   flowOverridden: false,
   lossOverrideEnabled: false,
   lossOverrideKw: 0,
   includePipework: false,
-  pipeLength: 20,
-  pipeDiameterMm: 76.1,
-  pipeU: 0.8,
+  pipeLength: 0,
+  pipeDiameterMm: 0,
+  pipeU: 0,
   projectReference: "",
 };
 
@@ -213,28 +215,152 @@ export function safeNumber(value: number, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+// ---------------------------------------------------------------------------
+// Fluid properties: Water and Ethylene Glycol correlations
+// ---------------------------------------------------------------------------
+
 /**
- * Water density kg/m³, 0–100 °C (Thiesen-style quadratic fit to IAPWS values).
+ * Liquid water density at 1 atm (0–100 °C).
+ * Kell, G. S. (1975). "Density, thermal expansivity, and compressibility of liquid
+ * water from 0° to 150°C: Correlations and tables for atmospheric pressure and
+ * saturation reviewed and expressed on 1968 high temperature scale."
+ * Journal of Chemical & Engineering Data, 20(1), 97–105.
+ *
+ * Valid 0–100 °C:
+ *   0 °C   -> ~999.84 kg/m³
+ *  20 °C   -> ~998.20 kg/m³
+ *  40 °C   -> ~992.22 kg/m³
+ *  80 °C   -> ~971.80 kg/m³
+ * 100 °C   -> ~958.36 kg/m³
  */
-export function waterDensity(temperatureC: number) {
-  const t = clamp(temperatureC, 0, 100);
-  return 999.83952 + 0.067932952 * t - 0.00909529 * t * t + 0.0001001685 * t * t * t - 1.120083e-7 * t ** 4;
+export function waterDensity(temperatureC: number): number {
+  const t = clamp(safeNumber(temperatureC, 20), 0, 100);
+  const num =
+    999.83952 +
+    16.945176 * t -
+    7.9870401e-3 * t * t -
+    46.170461e-6 * t * t * t +
+    105.56302e-9 * t * t * t * t -
+    280.54253e-12 * t ** 5;
+  const den = 1 + 16.87985e-3 * t;
+  return num / den;
 }
 
 /**
- * Water specific heat kJ/kg·K, 0–100 °C.
+ * Liquid water isobaric specific heat capacity (kJ/kg·K) at 1 atm, 0–100 °C.
+ * Based on recognized formulation for water at atmospheric pressure:
+ *   0 °C   -> ~4.217 kJ/kg·K
+ *  20 °C   -> ~4.185 kJ/kg·K
+ *  40 °C   -> ~4.175 kJ/kg·K
+ *  80 °C   -> ~4.194 kJ/kg·K
+ * 100 °C   -> ~4.211 kJ/kg·K
  */
-export function waterSpecificHeat(temperatureC: number) {
-  const t = clamp(temperatureC, 0, 100);
+export function waterSpecificHeat(temperatureC: number): number {
+  const t = clamp(safeNumber(temperatureC, 20), 0, 100);
   return 4.2174 - 0.002245 * t + 3.491e-5 * t * t - 1.31e-7 * t ** 3;
 }
 
 /**
- * Ethylene glycol (pure) density kg/m³ and Cp kJ/kg·K.
- * Linear fits to published EG properties over 0–90 °C.
+ * Published engineering data from Dow Chemical Company:
+ * "Engineering & Operating Guide for DOWTHERM SR-1 and DOWTHERM 4000
+ *  Inhibited Ethylene Glycol-based Heat Transfer Fluids" (Form No. 180-01190).
+ * Table 11: Densities (kg/m³) of Aqueous Solutions of DOWTHERM SR-1 Fluid (SI Units).
+ * Columns: [0% pure water (Kell 1975), 10% vol, 20% vol, 30% vol].
+ * Range: 0–100 °C at 5 °C increments.
+ */
+export const DOW_DENSITY_TABLE: Record<number, [number, number, number, number]> = {
+  0: [waterDensity(0), 1019.9, 1036.8, 1053.0],
+  5: [waterDensity(5), 1018.7, 1035.5, 1051.5],
+  10: [waterDensity(10), 1017.4, 1034.1, 1049.9],
+  15: [waterDensity(15), 1016.0, 1032.5, 1048.2],
+  20: [waterDensity(20), 1014.5, 1030.9, 1046.4],
+  25: [waterDensity(25), 1012.8, 1029.1, 1044.5],
+  30: [waterDensity(30), 1011.0, 1027.2, 1042.4],
+  35: [waterDensity(35), 1009.2, 1025.1, 1040.2],
+  40: [waterDensity(40), 1007.1, 1023.0, 1037.9],
+  45: [waterDensity(45), 1005.0, 1020.7, 1035.5],
+  50: [waterDensity(50), 1002.7, 1018.3, 1033.0],
+  55: [waterDensity(55), 1000.3, 1015.8, 1030.3],
+  60: [waterDensity(60), 997.8, 1013.1, 1027.5],
+  65: [waterDensity(65), 995.2, 1010.4, 1024.6],
+  70: [waterDensity(70), 992.5, 1007.5, 1021.6],
+  75: [waterDensity(75), 989.6, 1004.5, 1018.4],
+  80: [waterDensity(80), 986.6, 1001.3, 1015.1],
+  85: [waterDensity(85), 983.5, 998.1, 1011.7],
+  90: [waterDensity(90), 980.3, 994.7, 1008.2],
+  95: [waterDensity(95), 976.9, 991.2, 1004.6],
+  100: [waterDensity(100), 973.4, 987.6, 1000.8],
+};
+
+/**
+ * Published engineering data from Dow Chemical Company:
+ * "Engineering & Operating Guide for DOWTHERM SR-1 and DOWTHERM 4000
+ *  Inhibited Ethylene Glycol-based Heat Transfer Fluids" (Form No. 180-01190).
+ * Table 23: Specific Heat (kJ/kg·K) of Aqueous Solutions of DOWTHERM SR-1 Fluid (SI Units).
+ * Columns: [0% pure water, 10% vol, 20% vol, 30% vol].
+ * Range: 0–100 °C at 5 °C increments.
+ */
+export const DOW_CP_TABLE: Record<number, [number, number, number, number]> = {
+  0: [waterSpecificHeat(0), 3.939, 3.771, 3.590],
+  5: [waterSpecificHeat(5), 3.947, 3.782, 3.604],
+  10: [waterSpecificHeat(10), 3.956, 3.794, 3.619],
+  15: [waterSpecificHeat(15), 3.965, 3.805, 3.633],
+  20: [waterSpecificHeat(20), 3.974, 3.816, 3.647],
+  25: [waterSpecificHeat(25), 3.982, 3.828, 3.661],
+  30: [waterSpecificHeat(30), 3.991, 3.839, 3.675],
+  35: [waterSpecificHeat(35), 4.000, 3.851, 3.690],
+  40: [waterSpecificHeat(40), 4.009, 3.862, 3.704],
+  45: [waterSpecificHeat(45), 4.017, 3.874, 3.718],
+  50: [waterSpecificHeat(50), 4.026, 3.885, 3.732],
+  55: [waterSpecificHeat(55), 4.035, 3.897, 3.746],
+  60: [waterSpecificHeat(60), 4.044, 3.908, 3.761],
+  65: [waterSpecificHeat(65), 4.052, 3.920, 3.775],
+  70: [waterSpecificHeat(70), 4.061, 3.931, 3.789],
+  75: [waterSpecificHeat(75), 4.070, 3.943, 3.803],
+  80: [waterSpecificHeat(80), 4.079, 3.954, 3.817],
+  85: [waterSpecificHeat(85), 4.087, 3.966, 3.831],
+  90: [waterSpecificHeat(90), 4.096, 3.977, 3.846],
+  95: [waterSpecificHeat(95), 4.105, 3.989, 3.860],
+  100: [waterSpecificHeat(100), 4.113, 4.000, 3.874],
+};
+
+function interpolateDowGrid(
+  table: Record<number, [number, number, number, number]>,
+  concentrationVol: number,
+  temperatureC: number,
+): number {
+  const c = clamp(concentrationVol, 0, 30);
+  const t = clamp(temperatureC, 0, 100);
+
+  const cIdx0 = Math.min(2, Math.floor(c / 10));
+  const cIdx1 = cIdx0 + 1;
+  const cFrac = (c - cIdx0 * 10) / 10;
+
+  const tStep = Math.min(19, Math.floor(t / 5));
+  const t0 = tStep * 5;
+  const t1 = t0 + 5;
+  const tFrac = (t - t0) / 5;
+
+  const r0 = table[t0];
+  const r1 = table[t1];
+
+  const v00 = r0[cIdx0];
+  const v01 = r0[cIdx1];
+  const v10 = r1[cIdx0];
+  const v11 = r1[cIdx1];
+
+  const top = (1 - cFrac) * v00 + cFrac * v01;
+  const bot = (1 - cFrac) * v10 + cFrac * v11;
+
+  return (1 - tFrac) * top + tFrac * bot;
+}
+
+/**
+ * Pure ethylene glycol property estimates (kg/m³, kJ/kg·K).
+ * Retained for legacy reference.
  */
 export function ethyleneGlycolProperties(temperatureC: number) {
-  const t = clamp(temperatureC, 0, 100);
+  const t = clamp(safeNumber(temperatureC, 20), 0, 100);
   return {
     density: 1132.2 - 0.695 * t,
     specificHeat: 2.261 + 0.00435 * t,
@@ -246,24 +372,56 @@ export type FluidProperties = {
   specificHeat: number;
   glycolPercent: number;
   temperatureC: number;
+  warnings?: string[];
+};
+
+export type FluidModelSelection = "shared" | "bath-water-primary-glycol";
+
+export type FluidModelDetails = {
+  storedDensity: number;
+  storedSpecificHeat: number;
+  circuitDensity: number;
+  circuitSpecificHeat: number;
+  glycolPercent: number;
+  meanTemperature: number;
+  isSeparated: boolean;
+  warnings?: string[];
 };
 
 /**
- * Ethylene glycol / water mixture by volume (0–30 %).
- * Density uses volume-weighted mixing; Cp uses mass-weighted mixing.
+ * Aqueous Ethylene Glycol mixture properties (0–30% by volume, 0–100 °C)
+ * based on published Dow DOWTHERM SR-1 technical engineering data.
+ * Validated against reference anchor: 30% EG vol at 40 °C -> ~1,037.92 kg/m³, ~3.704 kJ/kg·K.
  */
 export function glycolMixProperties(glycolPercent: number, temperatureC: number): FluidProperties {
-  const percent = clamp(safeNumber(glycolPercent, 0), 0, 30);
-  const t = Number.isFinite(temperatureC) ? temperatureC : 20;
-  const waterRho = waterDensity(t);
-  const waterCp = waterSpecificHeat(t);
-  const glycol = ethyleneGlycolProperties(t);
-  const volumeFraction = percent / 100;
-  const density = (1 - volumeFraction) * waterRho + volumeFraction * glycol.density;
-  const massGlycol = volumeFraction * glycol.density;
-  const massWater = (1 - volumeFraction) * waterRho;
-  const specificHeat = (massWater * waterCp + massGlycol * glycol.specificHeat) / density;
-  return { density, specificHeat, glycolPercent: percent, temperatureC: t };
+  const warnings: string[] = [];
+  const rawPercent = safeNumber(glycolPercent, 0);
+  const rawT = safeNumber(temperatureC, 20);
+
+  if (rawPercent < 0 || rawPercent > 30) {
+    warnings.push(
+      `Glycol concentration ${rawPercent}% is outside the supported 0–30% by volume data range for DOWTHERM SR-1.`,
+    );
+  }
+  if (rawT < 0 || rawT > 100) {
+    warnings.push(
+      `Temperature ${rawT}°C is outside the supported 0–100°C fluid property range for atmospheric liquid.`,
+    );
+  }
+
+  const percent = clamp(rawPercent, 0, 30);
+  const t = clamp(rawT, 0, 100);
+
+  const density = interpolateDowGrid(DOW_DENSITY_TABLE, percent, t);
+  const specificHeat = interpolateDowGrid(DOW_CP_TABLE, percent, t);
+
+  return {
+    density,
+    specificHeat,
+    glycolPercent: percent,
+    temperatureC: t,
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
 }
 
 export function flowM3hFromDuty(dutyKw: number, density: number, specificHeat: number, deltaT: number) {
@@ -311,9 +469,14 @@ export type PlannerResult = {
   sensibleEnergyKWh: number;
   density: number;
   specificHeat: number;
+  circuitDensity: number;
+  circuitSpecificHeat: number;
+  fluidModel: FluidModelDetails;
   glycol: FluidProperties;
   enteredDuty: number;
   duty: number;
+  unconstrainedDuty: number;
+  flowLimitedDuty: number;
   calculatedFlowM3h: number;
   circulationM3h: number;
   recoveryMinutes: number;
@@ -327,6 +490,8 @@ export type PlannerResult = {
   requiredFlowLps: number;
   flowLimited: boolean;
   targetFlowLimited: boolean;
+  approachLimitedAtTarget: boolean;
+  limitReason: string;
   isCooling: boolean;
   selectedBreakdown: LossBreakdown;
   cases: Array<{
@@ -354,8 +519,47 @@ export function computePlanner(input: Inputs): PlannerResult {
   const finishTemperature = safeNumber(input.finishTemperature);
   const meanTemperature = (startTemperature + finishTemperature) / 2;
   const glycol = glycolMixProperties(input.glycolPercent, meanTemperature);
-  const density = input.fluidOverridden ? densityInput : glycol.density;
-  const specificHeat = input.fluidOverridden ? specificHeatInput : glycol.specificHeat;
+
+  // Stored fluid vs circulating/primary fluid properties
+  const isSeparated = input.application === "tank" && input.fluidLocation === "circuit-only";
+  let storedDensity: number;
+  let storedSpecificHeat: number;
+  let circuitDensity: number;
+  let circuitSpecificHeat: number;
+
+  if (input.fluidOverridden) {
+    storedDensity = densityInput;
+    storedSpecificHeat = specificHeatInput;
+    circuitDensity = densityInput;
+    circuitSpecificHeat = specificHeatInput;
+  } else if (isSeparated) {
+    // Tank fluid is pure water at bath mean temperature
+    storedDensity = waterDensity(meanTemperature);
+    storedSpecificHeat = waterSpecificHeat(meanTemperature);
+    // Primary/circulation circuit contains the glycol mixture
+    circuitDensity = glycol.density;
+    circuitSpecificHeat = glycol.specificHeat;
+  } else {
+    // Shared fluid assumption: bath/vessel and circuit both contain the same fluid
+    storedDensity = glycol.density;
+    storedSpecificHeat = glycol.specificHeat;
+    circuitDensity = glycol.density;
+    circuitSpecificHeat = glycol.specificHeat;
+  }
+
+  const fluidModel: FluidModelDetails = {
+    storedDensity,
+    storedSpecificHeat,
+    circuitDensity,
+    circuitSpecificHeat,
+    glycolPercent: input.glycolPercent,
+    meanTemperature,
+    isSeparated,
+    ...(glycol.warnings ? { warnings: glycol.warnings } : {}),
+  };
+
+  const density = storedDensity;
+  const specificHeat = storedSpecificHeat;
 
   const topArea =
     input.shape === "rectangular"
@@ -377,9 +581,8 @@ export function computePlanner(input: Inputs): PlannerResult {
         : geometricVolume
       : Math.max(0, safeNumber(input.measuredVolume));
   const wallArea = sideArea + (input.baseExposed ? baseArea : 0);
-  const pipeDiameterM = Math.max(0, safeNumber(input.pipeDiameterMm)) / 1000;
   const pipeArea = input.includePipework
-    ? Math.PI * pipeDiameterM * Math.max(0, safeNumber(input.pipeLength))
+    ? Math.PI * (Math.max(0, safeNumber(input.pipeDiameterMm ?? 0)) / 1000) * Math.max(0, safeNumber(input.pipeLength ?? 0))
     : 0;
   const fluidMass = (volumeLitres / 1000) * density;
   const thermalCapacity = fluidMass * specificHeat + Math.max(0, safeNumber(input.steelMass)) * 0.5;
@@ -390,12 +593,7 @@ export function computePlanner(input: Inputs): PlannerResult {
   const sensibleEnergyKWh = (thermalCapacity * deltaTemperature) / 3600;
   const designDeltaT = Math.max(0, safeNumber(input.designDeltaT));
   const enteredDuty = Math.max(0, safeNumber(input.availableDuty));
-  const calculatedFlowM3h = flowM3hFromDuty(enteredDuty, density, specificHeat, designDeltaT);
-  const circulationM3h = input.flowOverridden
-    ? Math.max(0, safeNumber(input.circulation))
-    : calculatedFlowM3h;
-  const circulationLps = circulationM3h / 3.6;
-  const flowCapacityPerK = circulationLps * (density / 1000) * specificHeat;
+
   const ambientVapourPressure =
     (Math.max(0, Math.min(100, safeNumber(input.humidity))) / 100) * saturationPressure(safeNumber(input.ambient));
   const evaporationCoefficient = 2160 / saturationPressure(60);
@@ -424,8 +622,10 @@ export function computePlanner(input: Inputs): PlannerResult {
 
   const rawBreakdownAt = (temperature: number, airCase: AirCase): Omit<LossBreakdown, "overridden"> => {
     const process = Math.max(0, safeNumber(input.additionalLoad));
-    const pipeDelta = temperature - ambient;
-    const pipework = (Math.max(0, safeNumber(input.pipeU)) * pipeArea * pipeDelta) / 1000;
+    const pipeDelta = Math.abs(temperature - ambient);
+    const pipework = input.includePipework
+      ? (Math.max(0, safeNumber(input.pipeU ?? 0)) * pipeArea * pipeDelta) / 1000
+      : 0;
 
     if (input.application !== "tank") {
       const surface = pipework;
@@ -439,11 +639,11 @@ export function computePlanner(input: Inputs): PlannerResult {
         process,
         surface,
         calculatedSurface: surface,
-        total: (isCooling ? -surface : surface) + process,
+        total: surface + process,
       };
     }
 
-    const delta = temperature - ambient;
+    const delta = Math.abs(temperature - ambient);
     const walls = (Math.max(0, safeNumber(input.wallU)) * wallArea * delta) / 1000;
     let lid = 0;
     let evaporation = 0;
@@ -474,7 +674,7 @@ export function computePlanner(input: Inputs): PlannerResult {
       process,
       surface: calculatedSurface,
       calculatedSurface,
-      total: (isCooling ? -calculatedSurface : calculatedSurface) + process,
+      total: calculatedSurface + process,
     };
   };
 
@@ -483,9 +683,9 @@ export function computePlanner(input: Inputs): PlannerResult {
     if (!input.lossOverrideEnabled || input.application !== "tank") {
       return { ...raw, overridden: false };
     }
-    const targetDelta = finishTemperature - ambient;
-    const nowDelta = temperature - ambient;
-    const scale = Math.abs(targetDelta) < 0.05 ? 1 : nowDelta / targetDelta;
+    const targetDelta = Math.abs(finishTemperature - ambient);
+    const nowDelta = Math.abs(temperature - ambient);
+    const scale = targetDelta < 0.05 ? 1 : nowDelta / targetDelta;
     const overriddenSurface = safeNumber(input.lossOverrideKw) * scale;
     const surface = overriddenSurface;
     return {
@@ -498,28 +698,31 @@ export function computePlanner(input: Inputs): PlannerResult {
       process: raw.process,
       surface,
       calculatedSurface: raw.calculatedSurface,
-      total: (isCooling ? -surface : surface) + raw.process,
+      total: surface + raw.process,
       overridden: true,
     };
   };
 
-  const flowCapacityAt = (temperature: number) => {
-    if (flowCapacityPerK <= 0) return 0;
+  const flowCapacityForCirculation = (flowM3h: number, temperature: number) => {
+    const flowLps = flowM3h / 3.6;
+    const flowCapPerK = flowLps * (circuitDensity / 1000) * circuitSpecificHeat;
+    if (flowCapPerK <= 0) return 0;
     if (input.application === "tank") {
       const source = safeNumber(input.sourceFlowTemperature);
       const approach = Math.max(0, safeNumber(input.minimumApproach));
       const availableDelta = isCooling
         ? temperature - (source + approach)
         : source - approach - temperature;
-      const approachCapacity = flowCapacityPerK * Math.max(0, availableDelta);
-      const designCapacity = dutyFromFlowM3h(circulationM3h, density, specificHeat, designDeltaT);
+      const approachCapacity = flowCapPerK * Math.max(0, availableDelta);
+      const designCapacity = dutyFromFlowM3h(flowM3h, circuitDensity, circuitSpecificHeat, designDeltaT);
       return Math.min(approachCapacity, designCapacity > 0 ? designCapacity : approachCapacity);
     }
-    return dutyFromFlowM3h(circulationM3h, density, specificHeat, designDeltaT);
+    return dutyFromFlowM3h(flowM3h, circuitDensity, circuitSpecificHeat, designDeltaT);
   };
 
-  const timeForPower = (
+  const timeForPowerWithFlow = (
     power: number,
+    flowM3h: number,
     airCase = input.airCase,
     applyFlowLimit = true,
     ignoreLoads = false,
@@ -531,7 +734,7 @@ export function computePlanner(input: Inputs): PlannerResult {
     for (let index = 0; index < steps; index += 1) {
       const temperature = startTemperature + direction * (index + 0.5) * temperatureStep;
       const usableDuty = applyFlowLimit
-        ? Math.min(Math.max(0, power), flowCapacityAt(temperature))
+        ? Math.min(Math.max(0, power), flowCapacityForCirculation(flowM3h, temperature))
         : Math.max(0, power);
       const opposingLoad = ignoreLoads ? 0 : breakdownAt(temperature, airCase).total;
       const netPower = usableDuty - opposingLoad;
@@ -541,33 +744,111 @@ export function computePlanner(input: Inputs): PlannerResult {
     return seconds / 60;
   };
 
-  const requiredPower = () => {
+  const unconstrainedRequiredDuty = (() => {
     if (deltaTemperature <= 0 || safeNumber(input.desiredMinutes) <= 0) {
       return Math.max(0, breakdownAt(finishTemperature, input.airCase).total);
     }
     const targetMinutes = Math.max(0.1, safeNumber(input.desiredMinutes));
+    const timePurePower = (p: number) => {
+      if (deltaTemperature <= 0) return 0;
+      const steps = 500;
+      const temperatureStep = deltaTemperature / steps;
+      let seconds = 0;
+      for (let index = 0; index < steps; index += 1) {
+        const temperature = startTemperature + direction * (index + 0.5) * temperatureStep;
+        const opposingLoad = breakdownAt(temperature, input.airCase).total;
+        const netPower = p - opposingLoad;
+        if (netPower <= 0.001) return Number.POSITIVE_INFINITY;
+        seconds += (thermalCapacity * temperatureStep) / netPower;
+      }
+      return seconds / 60;
+    };
+
     let low = Math.max(0, breakdownAt(finishTemperature, input.airCase).total) + 0.001;
     let high = Math.max(low + 1, sensibleEnergyKWh / (targetMinutes / 60) + low);
-    while (timeForPower(high, input.airCase, false) > targetMinutes && high < 100000) {
+    while (timePurePower(high) > targetMinutes && high < 1000000) {
       high *= 1.5;
     }
     for (let index = 0; index < 70; index += 1) {
       const midpoint = (low + high) / 2;
-      if (timeForPower(midpoint, input.airCase, false) > targetMinutes) low = midpoint;
+      if (timePurePower(midpoint) > targetMinutes) low = midpoint;
       else high = midpoint;
     }
     return high;
-  };
+  })();
 
-  const unconstrainedDuty =
-    input.recoveryMode === "available" ? enteredDuty : requiredPower();
-  const flowLimitedDuty = dutyFromFlowM3h(circulationM3h, density, specificHeat, designDeltaT);
-  const duty =
-    input.flowOverridden && input.recoveryMode === "available"
-      ? Math.min(unconstrainedDuty, flowLimitedDuty)
-      : unconstrainedDuty;
-  const recoveryMinutes = timeForPower(duty);
-  const noLossMinutes = timeForPower(duty, input.airCase, true, true);
+  let unconstrainedDuty: number;
+  let activeDuty: number;
+  let calculatedFlowM3h: number;
+  let circulationM3h: number;
+
+  if (input.recoveryMode === "available") {
+    unconstrainedDuty = enteredDuty;
+    calculatedFlowM3h = flowM3hFromDuty(enteredDuty, circuitDensity, circuitSpecificHeat, designDeltaT);
+    circulationM3h = input.flowOverridden
+      ? Math.max(0, safeNumber(input.circulation))
+      : calculatedFlowM3h;
+    const flowLimitedDuty = dutyFromFlowM3h(circulationM3h, circuitDensity, circuitSpecificHeat, designDeltaT);
+    activeDuty = input.flowOverridden ? Math.min(unconstrainedDuty, flowLimitedDuty) : unconstrainedDuty;
+  } else {
+    // "Size the kW" mode:
+    unconstrainedDuty = unconstrainedRequiredDuty;
+    if (input.flowOverridden) {
+      circulationM3h = Math.max(0, safeNumber(input.circulation));
+      const flowLimitedDuty = dutyFromFlowM3h(circulationM3h, circuitDensity, circuitSpecificHeat, designDeltaT);
+      calculatedFlowM3h = flowM3hFromDuty(unconstrainedDuty, circuitDensity, circuitSpecificHeat, designDeltaT);
+      activeDuty = Math.min(unconstrainedDuty, flowLimitedDuty);
+    } else {
+      const timeWithAutoFlow = (p: number, airCase = input.airCase, ignoreLoads = false) => {
+        if (deltaTemperature <= 0) return 0;
+        const autoFlow = flowM3hFromDuty(p, circuitDensity, circuitSpecificHeat, designDeltaT);
+        return timeForPowerWithFlow(p, autoFlow, airCase, true, ignoreLoads);
+      };
+
+      const source = safeNumber(input.sourceFlowTemperature);
+      const approach = Math.max(0, safeNumber(input.minimumApproach));
+      const targetDeltaAtFinish = isCooling
+        ? finishTemperature - (source + approach)
+        : source - approach - finishTemperature;
+
+      const targetMinutes = Math.max(0.1, safeNumber(input.desiredMinutes));
+      if (input.application === "tank" && targetDeltaAtFinish <= 0) {
+        // Unattainable target
+        activeDuty = unconstrainedRequiredDuty;
+        calculatedFlowM3h = flowM3hFromDuty(activeDuty, circuitDensity, circuitSpecificHeat, designDeltaT);
+        circulationM3h = calculatedFlowM3h;
+      } else {
+        // Binary search for required duty with auto flow
+        let low = Math.max(0, breakdownAt(finishTemperature, input.airCase).total) + 0.001;
+        let high = Math.max(low + 1, sensibleEnergyKWh / (targetMinutes / 60) + low);
+        while (timeWithAutoFlow(high, input.airCase, false) > targetMinutes && high < 10000000) {
+          high *= 1.5;
+        }
+        if (high < 10000000) {
+          for (let index = 0; index < 70; index += 1) {
+            const midpoint = (low + high) / 2;
+            if (timeWithAutoFlow(midpoint, input.airCase, false) > targetMinutes) low = midpoint;
+            else high = midpoint;
+          }
+          activeDuty = high;
+        } else {
+          activeDuty = unconstrainedRequiredDuty;
+        }
+        calculatedFlowM3h = flowM3hFromDuty(activeDuty, circuitDensity, circuitSpecificHeat, designDeltaT);
+        circulationM3h = calculatedFlowM3h;
+      }
+    }
+  }
+
+  const duty = activeDuty;
+  const flowLimitedDuty = dutyFromFlowM3h(circulationM3h, circuitDensity, circuitSpecificHeat, designDeltaT);
+  const flowCapacityAt = (temperature: number) =>
+    flowCapacityForCirculation(circulationM3h, temperature);
+
+  const recoveryMinutes = timeForPowerWithFlow(duty, circulationM3h, input.airCase, true, false);
+  const noLossMinutes = timeForPowerWithFlow(duty, circulationM3h, input.airCase, true, true);
+  const circulationLps = circulationM3h / 3.6;
+  const flowCapacityPerK = circulationLps * (circuitDensity / 1000) * circuitSpecificHeat;
   const flowTemperatureChange = flowCapacityPerK > 0 ? duty / flowCapacityPerK : NaN;
   const turnoverMinutes = circulationM3h > 0 ? (volumeLitres / 1000 / circulationM3h) * 60 : NaN;
   const flowCapacityAtStart = flowCapacityAt(startTemperature);
@@ -575,17 +856,59 @@ export function computePlanner(input: Inputs): PlannerResult {
   const effectiveDutyAtStart = Math.min(duty, flowCapacityAtStart);
   const effectiveDutyAtTarget = Math.min(duty, flowCapacityAtTarget);
   const requiredFlowLps =
-    designDeltaT > 0 ? duty / ((density / 1000) * specificHeat * designDeltaT) : Number.POSITIVE_INFINITY;
-  const flowLimited = duty > Math.min(flowCapacityAtStart, flowCapacityAtTarget) + 0.05;
+    designDeltaT > 0
+      ? duty / ((circuitDensity / 1000) * circuitSpecificHeat * designDeltaT)
+      : Number.POSITIVE_INFINITY;
+
+  // Determine flow/approach limitations and limit reasons:
+  // Is approach limited at target?
+  let approachLimitedAtTarget = false;
+  if (input.application === "tank") {
+    const source = safeNumber(input.sourceFlowTemperature);
+    const approach = Math.max(0, safeNumber(input.minimumApproach));
+    const targetDelta = isCooling
+      ? finishTemperature - (source + approach)
+      : source - approach - finishTemperature;
+    if (targetDelta < designDeltaT) {
+      const approachCap = flowCapacityPerK * Math.max(0, targetDelta);
+      if (approachCap < duty - 0.05) {
+        approachLimitedAtTarget = true;
+      }
+    }
+  }
+
+  const flowLimited =
+    duty > Math.min(flowCapacityAtStart, flowCapacityAtTarget) + 0.05 ||
+    (input.flowOverridden && unconstrainedDuty > flowLimitedDuty + 0.05);
+
+  let limitReason = "";
+  if (input.application === "tank") {
+    const source = safeNumber(input.sourceFlowTemperature);
+    const approach = Math.max(0, safeNumber(input.minimumApproach));
+    const targetDelta = isCooling
+      ? finishTemperature - (source + approach)
+      : source - approach - finishTemperature;
+    if (targetDelta <= 0) {
+      limitReason = `Target temperature ${finishTemperature}°C cannot be reached with source at ${source}°C and ${approach} K minimum approach.`;
+    } else if (input.flowOverridden && unconstrainedDuty > flowLimitedDuty + 0.05) {
+      limitReason = `Overridden flow of ${format(circulationM3h, 2)} m³/h limits deliverable duty to ${format(flowLimitedDuty, 1)} kW at ${designDeltaT} K design ΔT.`;
+    } else if (approachLimitedAtTarget) {
+      limitReason = `Source temperature (${source}°C) and ${approach} K minimum approach reduce effective duty to ${format(effectiveDutyAtTarget, 1)} kW near target temperature.`;
+    }
+  } else if (input.flowOverridden && unconstrainedDuty > flowLimitedDuty + 0.05) {
+    limitReason = `Overridden flow of ${format(circulationM3h, 2)} m³/h limits deliverable duty to ${format(flowLimitedDuty, 1)} kW at ${designDeltaT} K design ΔT.`;
+  }
+
   const targetFlowLimited =
     input.recoveryMode === "required" &&
-    (!Number.isFinite(recoveryMinutes) || recoveryMinutes > Math.max(0, safeNumber(input.desiredMinutes)) + 0.5);
+    (!Number.isFinite(recoveryMinutes) ||
+      recoveryMinutes > Math.max(0, safeNumber(input.desiredMinutes)) + 0.5);
 
   const cases = (Object.keys(AIR_CASES) as AirCase[]).map((airCase) => ({
     id: airCase,
     ...AIR_CASES[airCase],
     breakdown: breakdownAt(finishTemperature, airCase),
-    recoveryMinutes: timeForPower(duty, airCase),
+    recoveryMinutes: timeForPowerWithFlow(duty, circulationM3h, airCase, true, false),
   }));
 
   return {
@@ -601,9 +924,14 @@ export function computePlanner(input: Inputs): PlannerResult {
     sensibleEnergyKWh,
     density,
     specificHeat,
+    circuitDensity,
+    circuitSpecificHeat,
+    fluidModel,
     glycol,
     enteredDuty,
     duty,
+    unconstrainedDuty,
+    flowLimitedDuty,
     calculatedFlowM3h,
     circulationM3h,
     recoveryMinutes,
@@ -617,6 +945,8 @@ export function computePlanner(input: Inputs): PlannerResult {
     requiredFlowLps,
     flowLimited,
     targetFlowLimited,
+    approachLimitedAtTarget,
+    limitReason,
     isCooling,
     selectedBreakdown: breakdownAt(finishTemperature, input.airCase),
     cases,

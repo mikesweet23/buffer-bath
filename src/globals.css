@@ -1403,10 +1403,6 @@ footer p {
   align-items: start;
 }
 
-.pipework-block {
-  padding: 0 24px 8px;
-}
-
 .override-note {
   margin: 4px 0 0;
   color: var(--brand-dark);
