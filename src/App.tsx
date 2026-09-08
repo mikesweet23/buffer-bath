@@ -256,11 +256,20 @@ function ResultPanel({
             : applicationLabel.toLowerCase()}
         </small>
       </div>
-      {impossible || result.targetFlowLimited ? (
+      {impossible || result.targetFlowLimited || result.limitReason ? (
         <div className="warning-message">
-          {result.flowLimited
-            ? "The entered or calculated flow cannot carry the full duty under the selected temperature limit."
-            : "Available duty is overcome by the selected standing or continuous load."}
+          {result.limitReason
+            ? result.limitReason
+            : result.flowLimited
+              ? "The entered or calculated flow cannot carry the full duty under the selected temperature limit."
+              : "Available duty is overcome by the selected standing or continuous load."}
+        </div>
+      ) : null}
+      {result.fluidModel.warnings && result.fluidModel.warnings.length > 0 ? (
+        <div className="warning-message" style={{ marginTop: "8px" }}>
+          {result.fluidModel.warnings.map((w, idx) => (
+            <div key={idx}>{w}</div>
+          ))}
         </div>
       ) : null}
       <div className="metric-grid">
@@ -292,10 +301,12 @@ function ResultPanel({
       <div className="result-note">
         <span className="pulse-dot" />
         {input.flowOverridden
-          ? "Flow overridden — usable kW is limited by mass flow × Cp × ΔT."
+          ? `Flow overridden (${format(result.circulationM3h, 2)} m³/h) — usable duty limited by flow × density × Cp × ΔT.`
           : input.application === "tank"
-            ? "Includes temperature-dependent losses and flow limits"
-            : "Closed circuit volume with duty and flow limits"}
+            ? result.approachLimitedAtTarget
+              ? "Includes temperature-dependent losses, flow sizing and exchanger approach limits."
+              : "Includes temperature-dependent losses and flow limits."
+            : "Closed circuit volume with duty and flow limits."}
       </div>
     </aside>
   );
@@ -419,16 +430,15 @@ export default function Home() {
 
   const setGlycol = (percent: number) => {
     setInput((current) => {
-      const mix = glycolMixProperties(
-        percent,
-        (safeTemp(current.startTemperature) + safeTemp(current.finishTemperature)) / 2,
-      );
+      const meanT = (safeTemp(current.startTemperature) + safeTemp(current.finishTemperature)) / 2;
+      const mix = glycolMixProperties(percent, meanT);
+      const isSeparated = current.application === "tank" && current.fluidLocation === "circuit-only";
       return {
         ...current,
         glycolPercent: percent,
         fluidOverridden: false,
-        density: mix.density,
-        specificHeat: mix.specificHeat,
+        density: isSeparated ? waterDensity(meanT) : mix.density,
+        specificHeat: isSeparated ? waterSpecificHeat(meanT) : mix.specificHeat,
       };
     });
   };
@@ -1003,24 +1013,39 @@ export default function Home() {
                     <b>{formatDuration(result.noLossMinutes)}</b>
                   </div>
                 </div>
-                {result.flowLimited || (input.flowOverridden && result.duty + 0.05 < result.enteredDuty) ? (
+                {result.flowLimited || (input.flowOverridden && result.duty + 0.05 < result.unconstrainedDuty) || result.approachLimitedAtTarget ? (
                   <div className="flow-warning">
-                    <b>Flow is limiting usable duty.</b>
+                    <b>{result.approachLimitedAtTarget ? "Temperature approach limits duty." : "Flow is limiting usable duty."}</b>
                     <span>
-                      Entered {format(result.enteredDuty, 1)} kW is limited to {format(result.duty, 1)} kW
-                      by the selected circulation and ΔT. Typical when reheat must not run all pumps.
+                      {result.limitReason
+                        ? result.limitReason
+                        : input.flowOverridden && result.duty + 0.05 < result.unconstrainedDuty
+                          ? `Entered / required ${format(result.unconstrainedDuty, 1)} kW is limited to ${format(result.duty, 1)} kW by the overridden flow of ${format(result.circulationM3h, 2)} m³/h and ${input.designDeltaT} K design ΔT.`
+                          : `Usable duty is ${format(result.duty, 1)} kW under current circulation and approach limits.`}
                     </span>
                   </div>
                 ) : (
                   <div className="flow-ok">
-                    <b>Flow can carry the entered duty.</b>
-                    <span>Mass flow × Cp × ΔT is at least the entered kW.</span>
+                    <b>Flow and temperatures can carry the full duty.</b>
+                    <span>Flow × density × Cp × ΔT delivers the entered duty without approach restriction.</span>
                   </div>
                 )}
                 <div className="flow-summary">
                   <div>
+                    <span>{input.recoveryMode === "required" ? "Required duty" : "Entered duty"}</span>
+                    <b>{format(result.unconstrainedDuty, 1)} kW</b>
+                  </div>
+                  <div>
                     <span>Usable duty</span>
                     <b>{format(result.duty, 1)} kW {input.flowOverridden ? "(flow-limited)" : ""}</b>
+                  </div>
+                  <div>
+                    <span>Effective duty at start</span>
+                    <b>{format(result.effectiveDutyAtStart, 1)} kW</b>
+                  </div>
+                  <div>
+                    <span>Effective duty at target</span>
+                    <b>{format(result.effectiveDutyAtTarget, 1)} kW {result.approachLimitedAtTarget ? "(approach-limited)" : ""}</b>
                   </div>
                   <div>
                     <span>Calculated flow from kW · ΔT</span>
@@ -1056,13 +1081,63 @@ export default function Home() {
             <span className="summary-plus">+</span>
           </summary>
           <div className="advanced-grid glycol-grid">
+            {input.application === "tank" ? (
+              <div className="field" style={{ gridColumn: "1 / -1" }}>
+                <span className="field-label-row">
+                  <span className="field-label">Fluid location &amp; circuit model</span>
+                </span>
+                <div className="segmented" role="group" aria-label="Fluid location">
+                  <button
+                    type="button"
+                    className={input.fluidLocation !== "circuit-only" ? "active" : ""}
+                    onClick={() => {
+                      patch("fluidLocation", "both");
+                      if (!input.fluidOverridden) {
+                        const mix = glycolMixProperties(input.glycolPercent, meanTemperature);
+                        setInput((curr) => ({
+                          ...curr,
+                          fluidLocation: "both",
+                          density: mix.density,
+                          specificHeat: mix.specificHeat,
+                        }));
+                      }
+                    }}
+                  >
+                    Shared fluid (tank bath &amp; circuit contain glycol)
+                  </button>
+                  <button
+                    type="button"
+                    className={input.fluidLocation === "circuit-only" ? "active" : ""}
+                    onClick={() => {
+                      patch("fluidLocation", "circuit-only");
+                      if (!input.fluidOverridden) {
+                        setInput((curr) => ({
+                          ...curr,
+                          fluidLocation: "circuit-only",
+                          density: waterDensity(meanTemperature),
+                          specificHeat: waterSpecificHeat(meanTemperature),
+                        }));
+                      }
+                    }}
+                  >
+                    Separated (water bath + glycol primary circuit)
+                  </button>
+                </div>
+                <small>
+                  {input.fluidLocation === "circuit-only"
+                    ? "Stored tank liquid retains pure water properties. Ethylene glycol mixture properties apply only to the external circulating / primary heat exchanger circuit."
+                    : "Shared fluid model: both the stored bath liquid and the circulation circuit contain the selected ethylene glycol mixture."}
+                </small>
+              </div>
+            ) : null}
+
             <label className="field glycol-field">
               <span className="field-label-row">
                 <span className="field-label">
-                  Ethylene glycol
-                  <em className="value-badge">{input.fluidOverridden ? "Cp overridden" : "Sets Cp & density"}</em>
+                  Aqueous Ethylene Glycol (volume)
+                  <em className="value-badge">{input.fluidOverridden ? "Manual override active" : "Sets Cp & density"}</em>
                 </span>
-                <span className="glycol-readout">{format(input.glycolPercent, 0)}%</span>
+                <span className="glycol-readout">{format(input.glycolPercent, 0)}% vol</span>
               </span>
               <input
                 type="range"
@@ -1070,36 +1145,71 @@ export default function Home() {
                 max={30}
                 step={1}
                 value={input.glycolPercent}
-                aria-label="Ethylene glycol volume percent"
+                aria-label="Aqueous ethylene glycol volume percent"
                 onChange={(event) => setGlycol(Number(event.target.value))}
               />
-              <small>0–30% by volume. Cp falls and density rises as glycol increases. Typical HVAC inhibited ethylene glycol.</small>
+              <small>
+                0–30% by volume aqueous Ethylene Glycol (DOWTHERM SR-1 technical data). Percentage by volume of pure glycol (not commercial concentrate). Does not represent propylene glycol.
+              </small>
             </label>
             <NumberField
-              label="Fluid density"
+              label={input.application === "tank" && input.fluidLocation === "circuit-only" ? "Bath density (water)" : "Fluid density"}
               value={input.fluidOverridden ? input.density : roundTo(result.density, 1)}
               onChange={(value) => overrideFluid("density", value)}
               unit="kg/m³"
               step={1}
               min={1}
               badge={input.fluidOverridden ? "Overridden" : "Calculated"}
-              hint={input.fluidOverridden ? `Mixture would be ${format(glycol.density, 1)} kg/m³.` : "From water/glycol mix at mean fluid temperature."}
+              hint={
+                input.fluidOverridden
+                  ? "Manual density override active."
+                  : input.application === "tank" && input.fluidLocation === "circuit-only"
+                    ? `Pure water at mean bath temp (${format(result.fluidModel.meanTemperature, 1)}°C). Circuit density: ${format(result.circuitDensity, 1)} kg/m³.`
+                    : `DOWTHERM SR-1 mixture at ${format(result.fluidModel.meanTemperature, 1)}°C.`
+              }
             />
             <NumberField
-              label="Specific heat"
+              label={input.application === "tank" && input.fluidLocation === "circuit-only" ? "Bath specific heat (water)" : "Specific heat (Cp)"}
               value={input.fluidOverridden ? input.specificHeat : roundTo(result.specificHeat, 3)}
               onChange={(value) => overrideFluid("specificHeat", value)}
               unit="kJ/kgK"
               step={0.001}
               min={0.01}
               badge={input.fluidOverridden ? "Overridden" : "Calculated"}
-              hint={input.fluidOverridden ? `Mixture would be ${format(glycol.specificHeat, 3)} kJ/kg·K.` : "Mass-weighted water + ethylene glycol Cp."}
+              hint={
+                input.fluidOverridden
+                  ? "Manual specific heat override active."
+                  : input.application === "tank" && input.fluidLocation === "circuit-only"
+                    ? `Pure water at mean bath temp (${format(result.fluidModel.meanTemperature, 1)}°C). Circuit Cp: ${format(result.circuitSpecificHeat, 3)} kJ/kg·K.`
+                    : `DOWTHERM SR-1 mixture at ${format(result.fluidModel.meanTemperature, 1)}°C.`
+              }
             />
             {input.fluidOverridden ? (
-              <button type="button" className="text-button" onClick={() => setGlycol(input.glycolPercent)}>
-                Restore glycol properties
+              <button
+                type="button"
+                className="text-button"
+                style={{ gridColumn: "1 / -1", justifySelf: "start" }}
+                onClick={() => setGlycol(input.glycolPercent)}
+              >
+                Restore automatic fluid properties
               </button>
-            ) : null}
+            ) : (
+              <button
+                type="button"
+                className="text-button"
+                style={{ gridColumn: "1 / -1", justifySelf: "start" }}
+                onClick={() => {
+                  setInput((curr) => ({
+                    ...curr,
+                    fluidOverridden: true,
+                    density: roundTo(result.density, 1),
+                    specificHeat: roundTo(result.specificHeat, 3),
+                  }));
+                }}
+              >
+                Override density and specific heat
+              </button>
+            )}
             {input.application === "tank" ? (
               <>
                 <NumberField label="Tank steel mass" value={input.steelMass} onChange={(value) => patch("steelMass", value)} unit="kg" step={10} min={0} />
@@ -1110,10 +1220,27 @@ export default function Home() {
                   unit="%"
                   step={10}
                   min={0}
-                  hint="100% for clean water. Adjust for process chemistry or partial covers."
+                  hint="Evaporation rate assumes water vapour pressure unless manually corrected. Enter a custom factor (e.g. 100% for water) to reflect covers or process chemistry."
                 />
               </>
             ) : null}
+          </div>
+
+          <div className="glycol-guidance" style={{ margin: "16px 0", padding: "14px 16px", background: "var(--paper, #f4f8fc)", border: "1px solid var(--line, #d4e3f0)", borderRadius: "8px", fontSize: "12px", lineHeight: "1.5" }}>
+            <p style={{ margin: "0 0 8px" }}>
+              <strong>Why increasing glycol can shorten heating time:</strong> Adding glycol reduces the fluid’s heat capacity per litre. If the same heating duty reaches the fluid, less energy is needed to reach the target temperature, so heating time can reduce. Automatic flow calculation increases the required circulation to maintain the entered duty. This does not mean an existing pump or heat exchanger will deliver that duty with glycol.
+            </p>
+            <p style={{ margin: "0 0 8px" }}>
+              At a fixed circulation rate and design temperature difference, glycol generally reduces the duty carried. Actual performance also depends on viscosity, thermal conductivity, pump performance and exchanger selection.
+            </p>
+            <p style={{ margin: "0 0 8px" }}>
+              <strong>Fundamental relationships:</strong><br />
+              • Stored energy: <em>E = volume × density × Cp × temperature rise</em> (kWh = L × kg/m³ × kJ/kg·K × ΔT / 3,600,000)<br />
+              • Circulating duty: <em>P = volumetric flow × density × Cp × circuit ΔT</em> (kW = (m³/h / 3600) × kg/m³ × kJ/kg·K × ΔT)
+            </p>
+            <p style={{ margin: "0" }}>
+              <strong>Limits of the exchanger and pump model:</strong> Enter the duty available at the actual glycol concentration, operating temperatures and achievable flow. The calculator does not automatically predict pump flow reduction, pressure drop, fouling or exchanger performance changes caused by glycol. Verify these with the equipment manufacturer.
+            </p>
           </div>
           <div className="pipework-block">
             <label className="toggle-row">
@@ -1136,7 +1263,7 @@ export default function Home() {
             ) : null}
           </div>
           <div className="method-note">
-            <b>Calculation basis</b>
+            <b>Calculation basis &amp; engineering notes</b>
             <p>
               Heating and cooling energy use mass × specific heat × absolute temperature change.
               Circulation is calculated from duty and design ΔT unless you override flow. An
@@ -1149,9 +1276,10 @@ export default function Home() {
               kW figure at target temperature.
             </p>
             <p>
-              Ethylene glycol from 0–30% by volume changes density (volume-weighted) and specific
-              heat (mass-weighted) using water and EG properties at the mean fluid temperature.
-              Indicative construction U-values are starting assumptions.
+              Aqueous Ethylene Glycol properties (0–30% by volume, 0–100°C) are derived from published Dow DOWTHERM SR-1 technical data sheets (SI units). Percentage refers to pure ethylene glycol by volume, not commercial concentrate by mass. Data applies to aqueous Ethylene Glycol; it does not represent propylene glycol. Water properties use the Kell (1975) atmospheric liquid water density formulation and standard liquid water Cp correlations.
+            </p>
+            <p>
+              <strong>Evaporation assumption:</strong> Open-top bath evaporation calculations assume clean water surface vapour pressure unless a manual adjustment factor is provided. The tool does not automatically reduce evaporation rate for glycol solutions without explicit empirical data.
             </p>
           </div>
         </details>

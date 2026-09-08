@@ -26,11 +26,55 @@ export function buildReportHtml(input: Inputs, result: PlannerResult) {
   const reference = input.projectReference.trim() || "Unreferenced";
   const fluidNote = input.fluidOverridden
     ? "User-overridden density and specific heat"
-    : `${format(input.glycolPercent, 0)}% ethylene glycol (volume)`;
-  const flowNote = input.flowOverridden ? "Overridden" : "Calculated from kW and ΔT";
+    : input.application === "tank" && input.fluidLocation === "circuit-only"
+      ? `Separated: Pure water bath, ${format(input.glycolPercent, 0)}% vol aqueous Ethylene Glycol primary circuit`
+      : `${format(input.glycolPercent, 0)}% vol aqueous Ethylene Glycol (DOWTHERM SR-1)`;
+  const flowNote = input.flowOverridden
+    ? "Overridden (flow-limited duty)"
+    : input.recoveryMode === "required"
+      ? "Sized automatically to meet recovery time"
+      : "Calculated from kW and ΔT";
   const lossNote = input.lossOverrideEnabled
     ? `Overridden insulation loss ${format(input.lossOverrideKw, 2)} kW at target`
     : "Calculated from U-values";
+
+  const dutyBlock =
+    input.recoveryMode === "required"
+      ? `<table>${row("Sizing mode", "Size the kW")}
+        ${row("Desired recovery time", `${format(input.desiredMinutes, 0)} min`)}
+        ${row("Required duty (unconstrained)", `${format(result.unconstrainedDuty, 1)} kW`)}
+        ${row("Usable duty", `${format(result.duty, 1)} kW ${input.flowOverridden ? "(flow-limited)" : ""}`)}
+        ${row("Effective duty at start", `${format(result.effectiveDutyAtStart, 1)} kW`)}
+        ${row("Effective duty at target", `${format(result.effectiveDutyAtTarget, 1)} kW ${result.approachLimitedAtTarget ? "(approach-limited)" : ""}`)}
+        ${row("Design ΔT", `${format(input.designDeltaT, 2)} K`)}
+        ${row("Flow / circulation", `${format(result.circulationM3h, 2)} m³/h · ${format(result.circulationM3h / 3.6, 2)} l/s`)}
+        ${row("Flow status", flowNote)}
+        ${row("Duty ÷ flow ΔT", `${format(result.flowTemperatureChange, 2)} K`)}</table>`
+      : `<table>${row("Entered duty", `${format(result.enteredDuty, 1)} kW`)}
+        ${row("Usable duty", `${format(result.duty, 1)} kW ${input.flowOverridden ? "(flow-limited)" : ""}`)}
+        ${row("Effective duty at start", `${format(result.effectiveDutyAtStart, 1)} kW`)}
+        ${row("Effective duty at target", `${format(result.effectiveDutyAtTarget, 1)} kW ${result.approachLimitedAtTarget ? "(approach-limited)" : ""}`)}
+        ${row("Design ΔT", `${format(input.designDeltaT, 2)} K`)}
+        ${row("Flow / circulation", `${format(result.circulationM3h, 2)} m³/h · ${format(result.circulationM3h / 3.6, 2)} l/s`)}
+        ${row("Flow status", flowNote)}
+        ${row("Duty ÷ flow ΔT", `${format(result.flowTemperatureChange, 2)} K`)}</table>`;
+
+  const warningSection =
+    result.limitReason || (result.fluidModel.warnings && result.fluidModel.warnings.length > 0)
+      ? section(
+          "Warnings & Operating Limits",
+          `<div style="background: #FFF4E5; border: 1px solid #FFE0B2; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; color: #8F4700;">
+            ${result.limitReason ? `<p style="margin: 0 0 6px;"><strong>Restriction:</strong> ${result.limitReason}</p>` : ""}
+            ${
+              result.fluidModel.warnings && result.fluidModel.warnings.length > 0
+                ? result.fluidModel.warnings
+                    .map((w) => `<p style="margin: 0 0 4px;"><strong>Property notice:</strong> ${w}</p>`)
+                    .join("")
+                : ""
+            }
+          </div>`,
+        )
+      : "";
 
   const geometry =
     input.application === "tank"
@@ -118,18 +162,11 @@ export function buildReportHtml(input: Inputs, result: PlannerResult) {
     <div>${application.label} · ${generated}</div>
   </header>
   <main>
+    ${warningSection}
     ${section("Application", `<table>${row("Mode", application.label)}${row("Action", application.action)}${row("Temperatures", `${format(input.startTemperature, 1)} °C → ${format(input.finishTemperature, 1)} °C`)}</table>`)}
     ${section("Volume and size", geometry)}
     ${constructionBlock}
-    ${section(
-      "Duty, flow and circulation",
-      `<table>${row("Entered duty", `${format(result.enteredDuty, 1)} kW`)}
-      ${row("Usable duty", `${format(result.duty, 1)} kW`)}
-      ${row("Design ΔT", `${format(input.designDeltaT, 2)} K`)}
-      ${row("Flow / circulation", `${format(result.circulationM3h, 2)} m³/h · ${format(result.circulationM3h / 3.6, 2)} l/s`)}
-      ${row("Flow status", flowNote)}
-      ${row("Duty ÷ flow ΔT", `${format(result.flowTemperatureChange, 2)} K`)}</table>`,
-    )}
+    ${section("Duty, flow and circulation", dutyBlock)}
     ${section(
       `${processWord} times`,
       `<div class="metrics">
@@ -144,12 +181,17 @@ export function buildReportHtml(input: Inputs, result: PlannerResult) {
       `<table>${row("Insulation losses", lossNote)}
       ${row("Calculated surface / pipework", `${format(result.selectedBreakdown.calculatedSurface, 2)} kW`)}
       ${pipework}
-      ${row("Fluid", fluidNote)}
-      ${row("Density", `${format(result.density, 1)} kg/m³`)}
-      ${row("Specific heat", `${format(result.specificHeat, 3)} kJ/kg·K`)}</table>`,
+      ${row("Fluid model", fluidNote)}
+      ${
+        input.application === "tank" && input.fluidLocation === "circuit-only"
+          ? row("Bath fluid (water)", `${format(result.density, 1)} kg/m³, ${format(result.specificHeat, 3)} kJ/kg·K`) +
+            row("Circuit fluid (EG)", `${format(result.circuitDensity, 1)} kg/m³, ${format(result.circuitSpecificHeat, 3)} kJ/kg·K`)
+          : row("Density", `${format(result.density, 1)} kg/m³`) +
+            row("Specific heat", `${format(result.specificHeat, 3)} kJ/kg·K`)
+      }</table>`,
     )}
     <footer>
-      Indicative engineering calculation. Verify exchanger selection, materials, fouling and pressure drop with the manufacturer.
+      Indicative engineering calculation. Enter the duty available at actual glycol concentration, operating temperatures and achievable flow. The calculator does not automatically predict pump flow reduction, pressure drop, fouling or exchanger performance changes caused by glycol. Evaporation calculation assumes clean water unless an adjustment factor is supplied. Verify final exchanger selection, materials, fouling allowance and pressure drop with the manufacturer.
     </footer>
   </main>
 </body>
