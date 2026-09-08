@@ -242,25 +242,25 @@ function TankDrawing({
         <svg viewBox="0 0 360 245" role="img" aria-label="Vertical cylindrical tank diagram">
           <defs>
             <linearGradient id="cyl-body" x1="0" x2="1">
-              <stop offset="0" stopColor="#dbe7ea" />
+              <stop offset="0" stopColor="#dce6f0" />
               <stop offset=".46" stopColor="#ffffff" />
-              <stop offset="1" stopColor="#aabec3" />
+              <stop offset="1" stopColor="#a9bcd0" />
             </linearGradient>
             <linearGradient id="water-cyl" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#52dfd2" stopOpacity=".82" />
-              <stop offset="1" stopColor="#0d96a0" stopOpacity=".94" />
+              <stop offset="0" stopColor="#5fc8f5" stopOpacity=".82" />
+              <stop offset="1" stopColor="#1e5fa8" stopOpacity=".94" />
             </linearGradient>
           </defs>
-          <path d="M92 56v122c0 23 35 42 88 42s88-19 88-42V56" fill="url(#cyl-body)" stroke="#18343d" strokeWidth="3" />
+          <path d="M92 56v122c0 23 35 42 88 42s88-19 88-42V56" fill="url(#cyl-body)" stroke="#17304a" strokeWidth="3" />
           <path d="M92 91v87c0 23 35 42 88 42s88-19 88-42V91c-25 15-150 15-176 0Z" fill="url(#water-cyl)" opacity=".82" />
-          <ellipse cx="180" cy="56" rx="88" ry="31" fill={isOpen ? "#49d8cf" : "#d6e3e6"} stroke="#18343d" strokeWidth="3" />
-          {isOpen ? <ellipse cx="180" cy="56" rx="73" ry="23" fill="#aaf8ed" opacity=".7" /> : null}
-          {!isOpen ? <path d="M103 51c35-22 120-22 154 0" fill="none" stroke="#779097" strokeWidth="2" /> : null}
-          <path d="M70 55v165M60 55h20M60 220h20" stroke="#6c8289" strokeWidth="2" />
+          <ellipse cx="180" cy="56" rx="88" ry="31" fill={isOpen ? "#5fc8f5" : "#d7e2ee"} stroke="#17304a" strokeWidth="3" />
+          {isOpen ? <ellipse cx="180" cy="56" rx="73" ry="23" fill="#bfe6fb" opacity=".7" /> : null}
+          {!isOpen ? <path d="M103 51c35-22 120-22 154 0" fill="none" stroke="#7e97ae" strokeWidth="2" /> : null}
+          <path d="M70 55v165M60 55h20M60 220h20" stroke="#6b8399" strokeWidth="2" />
           <text x="54" y="142" textAnchor="middle" transform="rotate(-90 54 142)" className="svg-label">
             {format(input.depth, 2)} m liquid depth
           </text>
-          <path d="M92 232h176M92 226v12M268 226v12" stroke="#6c8289" strokeWidth="2" />
+          <path d="M92 232h176M92 226v12M268 226v12" stroke="#6b8399" strokeWidth="2" />
           <text x="180" y="244" textAnchor="middle" className="svg-label">
             Ø {format(input.diameter, 2)} m
           </text>
@@ -278,30 +278,30 @@ function TankDrawing({
       <svg viewBox="0 0 380 250" role="img" aria-label="Rectangular tank diagram">
         <defs>
           <linearGradient id="tank-front" x1="0" x2="1">
-            <stop offset="0" stopColor="#b7cbd0" />
-            <stop offset=".52" stopColor="#f7fbfc" />
-            <stop offset="1" stopColor="#a1b7bd" />
+            <stop offset="0" stopColor="#b8c9da" />
+            <stop offset=".52" stopColor="#f7fafd" />
+            <stop offset="1" stopColor="#a3b7cb" />
           </linearGradient>
           <linearGradient id="tank-water" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#61e9dc" />
-            <stop offset="1" stopColor="#0f98a3" />
+            <stop offset="0" stopColor="#6ed0f7" />
+            <stop offset="1" stopColor="#1e5fa8" />
           </linearGradient>
         </defs>
-        <path d="M75 69 238 33 310 68 145 105Z" fill={isOpen ? "#8cf4e8" : "#d6e3e6"} stroke="#18343d" strokeWidth="3" />
-        {isOpen ? <path d="m89 71 148-31 58 28-149 31Z" fill="#55dbd2" opacity=".74" /> : null}
-        <path d="m75 69 70 36v115L75 182Z" fill="#9eb5bb" stroke="#18343d" strokeWidth="3" />
-        <path d="m145 105 165-37v112l-165 40Z" fill="url(#tank-front)" stroke="#18343d" strokeWidth="3" />
+        <path d="M75 69 238 33 310 68 145 105Z" fill={isOpen ? "#a9ddf9" : "#d7e2ee"} stroke="#17304a" strokeWidth="3" />
+        {isOpen ? <path d="m89 71 148-31 58 28-149 31Z" fill="#5fc8f5" opacity=".74" /> : null}
+        <path d="m75 69 70 36v115L75 182Z" fill="#9fb3c7" stroke="#17304a" strokeWidth="3" />
+        <path d="m145 105 165-37v112l-165 40Z" fill="url(#tank-front)" stroke="#17304a" strokeWidth="3" />
         <path d="M145 137 310 101v79l-165 40Z" fill="url(#tank-water)" opacity=".86" />
-        <path d="m75 105 70 32 165-36" fill="none" stroke="#0f8790" strokeWidth="2" opacity=".65" />
-        <path d="M53 69v113M44 69h18M44 182h18" stroke="#6c8289" strokeWidth="2" />
+        <path d="m75 105 70 32 165-36" fill="none" stroke="#2a5a8c" strokeWidth="2" opacity=".65" />
+        <path d="M53 69v113M44 69h18M44 182h18" stroke="#6b8399" strokeWidth="2" />
         <text x="36" y="129" textAnchor="middle" transform="rotate(-90 36 129)" className="svg-label">
           D {format(input.depth, 2)} m
         </text>
-        <path d="m146 235 164-40M143 226l5 17M308 187l5 17" stroke="#6c8289" strokeWidth="2" />
+        <path d="m146 235 164-40M143 226l5 17M308 187l5 17" stroke="#6b8399" strokeWidth="2" />
         <text x="232" y="228" textAnchor="middle" transform="rotate(-14 232 228)" className="svg-label">
           L {format(input.length, 2)} m
         </text>
-        <path d="m78 201 64 32M74 209l8-16M138 241l8-16" stroke="#6c8289" strokeWidth="2" />
+        <path d="m78 201 64 32M74 209l8-16M138 241l8-16" stroke="#6b8399" strokeWidth="2" />
         <text x="105" y="230" textAnchor="middle" transform="rotate(27 105 230)" className="svg-label">
           W {format(input.width, 2)} m
         </text>
@@ -327,21 +327,21 @@ function CircuitDrawing({
       <svg viewBox="0 0 380 250" role="img" aria-label={`${cooling ? "Chilled" : "LPHW"} closed circuit diagram`}>
         <defs>
           <linearGradient id="circuit-plant" x1="0" x2="1">
-            <stop offset="0" stopColor={cooling ? "#dff5ff" : "#fff0e4"} />
-            <stop offset="1" stopColor={cooling ? "#8bd7ef" : "#f3a469"} />
+            <stop offset="0" stopColor={cooling ? "#e6f6ff" : "#fff0e4"} />
+            <stop offset="1" stopColor={cooling ? "#5fc8f5" : "#f2a03f"} />
           </linearGradient>
         </defs>
-        <rect x="125" y="76" width="130" height="98" rx="18" fill="url(#circuit-plant)" stroke="#18343d" strokeWidth="3" />
+        <rect x="125" y="76" width="130" height="98" rx="18" fill="url(#circuit-plant)" stroke="#17304a" strokeWidth="3" />
         <text x="190" y="112" textAnchor="middle" className="svg-label circuit-title">
           {cooling ? "CHILLED CIRCUIT" : "LPHW CIRCUIT"}
         </text>
         <text x="190" y="143" textAnchor="middle" className="circuit-volume">
           {format(volumeLitres, 0)} L
         </text>
-        <path d="M125 98H73c-28 0-42 18-42 46s14 46 42 46h234c28 0 42-18 42-46s-14-46-42-46h-52" fill="none" stroke={cooling ? "#1789ac" : "#d56b33"} strokeWidth="10" strokeLinecap="round" />
+        <path d="M125 98H73c-28 0-42 18-42 46s14 46 42 46h234c28 0 42-18 42-46s-14-46-42-46h-52" fill="none" stroke={cooling ? "#2e90ff" : "#d9782f"} strokeWidth="10" strokeLinecap="round" />
         <path d="m305 89 15 9-15 9M75 181l-15 9 15 9" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="190" cy="48" r="22" fill="#fff" stroke="#18343d" strokeWidth="3" />
-        <path d="M190 70v16" stroke="#18343d" strokeWidth="3" />
+        <circle cx="190" cy="48" r="22" fill="#fff" stroke="#17304a" strokeWidth="3" />
+        <path d="M190 70v16" stroke="#17304a" strokeWidth="3" />
         <text x="190" y="55" textAnchor="middle" className="circuit-symbol">
           {cooling ? "❄" : "↟"}
         </text>
@@ -980,7 +980,7 @@ export default function Home() {
             <div className="loss-bars">
               {[
                 { label: "Walls + base", value: result.selectedBreakdown.walls, colour: "var(--navy)" },
-                { label: "Evaporation", value: result.selectedBreakdown.evaporation, colour: "var(--teal)" },
+                { label: "Evaporation", value: result.selectedBreakdown.evaporation, colour: "var(--brand)" },
                 { label: "Convection", value: result.selectedBreakdown.convection, colour: "var(--amber)" },
                 { label: "Radiation", value: result.selectedBreakdown.radiation, colour: "var(--coral)" },
                 { label: "Closed cover", value: result.selectedBreakdown.lid, colour: "var(--blue)" },
