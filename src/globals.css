@@ -1539,6 +1539,27 @@ select.attention {
   color: #8fb0d0;
 }
 
+.warning-message p {
+  margin: 0;
+}
+
+.warning-message p + p {
+  margin-top: 6px;
+}
+
+.info-notes {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.info-notes li + li {
+  margin-top: 4px;
+}
+
 .heatup-summary {
   grid-column: 1 / -1;
   margin: 6px 0 0;
@@ -1690,7 +1711,6 @@ select.attention {
   margin: 0;
   color: var(--muted);
   font-size: 9.5pt;
-  text-transform: capitalize;
 }
 
 .report-meta {

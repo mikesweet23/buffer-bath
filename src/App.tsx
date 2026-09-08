@@ -1068,7 +1068,7 @@ function Report({
           <p className="report-kicker">Buffer and Bath Heat Planner · Calculation report</p>
           <h1>{project.name || "Untitled project"}</h1>
           <p className="report-sub">
-            {application.label} · {application.action.toLowerCase()} · {processWord}
+            {application.label} · {result.isCooling ? "Cooling" : "Heating"} · {processWord}
           </p>
         </div>
         <dl className="report-meta">
@@ -1289,6 +1289,7 @@ export default function Home() {
       : "Available heating duty";
   const stepOffset = isTank ? 0 : -1;
   const blockingWarnings = result.warnings.filter((item) => item.level === "warn");
+  const infoNotes = result.warnings.filter((item) => item.level === "info");
 
   const selectApplication = (next: Application) => {
     setInput((current) => {
@@ -1328,7 +1329,20 @@ export default function Home() {
   };
 
   const resetMode = () => {
-    setInput(defaultsFor(input.application));
+    setInput((current) => {
+      const next = defaultsFor(current.application);
+      if (current.application === "tank") return next;
+      // Closed-circuit modes do not use the tank fields, so keep them for when the user returns.
+      const {
+        shape, length, width, depth, diameter, construction, wallU, baseExposed, topType, lidU,
+        humidity, airCase, evaporationFactor, steelMass,
+      } = current;
+      return {
+        ...next,
+        shape, length, width, depth, diameter, construction, wallU, baseExposed, topType, lidU,
+        humidity, airCase, evaporationFactor, steelMass,
+      };
+    });
   };
 
   const openReport = () => setView("report");
@@ -1522,7 +1536,9 @@ export default function Home() {
                 </div>
                 {blockingWarnings.length ? (
                   <div className="warning-message">
-                    {blockingWarnings[0].text}
+                    {blockingWarnings.map((item) => (
+                      <p key={item.text}>{item.text}</p>
+                    ))}
                   </div>
                 ) : null}
                 <div className="metric-grid">
@@ -2137,6 +2153,13 @@ export default function Home() {
                     <small>Extra time attributable to losses and continuous load</small>
                   </div>
                   <p className="heatup-summary">{summarySentence}</p>
+                  {infoNotes.length ? (
+                    <ul className="info-notes">
+                      {infoNotes.map((item) => (
+                        <li key={item.text}>{item.text}</li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               ) : (
                 <div className="heatup-output">
