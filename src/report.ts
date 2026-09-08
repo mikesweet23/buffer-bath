@@ -183,10 +183,17 @@ export function openReportPrint(input: Inputs, result: PlannerResult) {
     }, 500);
   };
   win.addEventListener("afterprint", cleanup);
+  let printed = false;
   const trigger = () => {
-    win.focus();
-    win.print();
+    if (printed) return;
+    printed = true;
+    try {
+      win.focus();
+      win.print();
+    } catch {
+      cleanup();
+    }
   };
-  if (win.document.readyState === "complete") trigger();
-  else win.addEventListener("load", trigger);
+  win.addEventListener("load", trigger);
+  window.setTimeout(trigger, 120);
 }
