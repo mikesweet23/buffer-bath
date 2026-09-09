@@ -41,7 +41,7 @@ export function buildReportHtml(input: Inputs, result: PlannerResult) {
   const dutyBlock =
     input.recoveryMode === "required"
       ? `<table>${row("Sizing mode", "Size the kW")}
-        ${row("Desired recovery time", `${format(input.desiredMinutes, 0)} min`)}
+        ${row("Target recovery time", `${format(input.desiredMinutes, 0)} min`)}
         ${row("Required duty (unconstrained)", `${format(result.unconstrainedDuty, 1)} kW`)}
         ${row("Usable duty", `${format(result.duty, 1)} kW ${input.flowOverridden ? "(flow-limited)" : ""}`)}
         ${row("Effective duty at start", `${format(result.effectiveDutyAtStart, 1)} kW`)}

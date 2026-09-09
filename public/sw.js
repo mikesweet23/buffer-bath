@@ -1,6 +1,6 @@
 const BASE = new URL('./', self.location.href).href;
 const PREFIX = 'buffer-bath-' + new URL(BASE).pathname + '-';
-const CACHE = PREFIX + 'standalone-v2';
+const CACHE = PREFIX + 'standalone-v3';
 const HOME = new URL('./', BASE).href;
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll([

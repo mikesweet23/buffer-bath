@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   AIR_CASES,
   APPLICATIONS,
@@ -8,6 +8,7 @@ import {
   DEFAULTS,
   LEGACY_CONSTRUCTIONS,
   TOP_TYPES,
+  clamp,
   computePlanner,
   format,
   formatDuration,
@@ -19,6 +20,71 @@ import {
   type PlannerResult,
 } from "./calc";
 import { openReportPrint } from "./report";
+
+function stepDecimals(step: number) {
+  if (!Number.isFinite(step) || step <= 0) return 1;
+  const text = String(step);
+  if (text.includes("e") || text.includes("E")) return 3;
+  const dot = text.indexOf(".");
+  return dot === -1 ? 0 : Math.min(4, text.length - dot - 1);
+}
+
+function StepButton({
+  direction,
+  label,
+  onStep,
+}: {
+  direction: 1 | -1;
+  label: string;
+  onStep: () => void;
+}) {
+  const holdTimer = useRef<number | null>(null);
+  const repeatTimer = useRef<number | null>(null);
+  const skipClick = useRef(false);
+
+  const clearHold = () => {
+    if (holdTimer.current !== null) {
+      window.clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+    if (repeatTimer.current !== null) {
+      window.clearInterval(repeatTimer.current);
+      repeatTimer.current = null;
+    }
+  };
+
+  useEffect(() => clearHold, []);
+
+  return (
+    <button
+      type="button"
+      className="stepper-btn"
+      aria-label={label}
+      onPointerDown={(event) => {
+        if (event.pointerType === "mouse" && event.button !== 0) return;
+        skipClick.current = true;
+        onStep();
+        clearHold();
+        holdTimer.current = window.setTimeout(() => {
+          repeatTimer.current = window.setInterval(onStep, 70);
+        }, 420);
+      }}
+      onPointerUp={clearHold}
+      onPointerLeave={clearHold}
+      onPointerCancel={clearHold}
+      onClick={() => {
+        if (skipClick.current) {
+          skipClick.current = false;
+          return;
+        }
+        onStep();
+      }}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      {direction < 0 ? "−" : "+"}
+    </button>
+  );
+}
 
 function NumberField({
   label,
@@ -45,6 +111,15 @@ function NumberField({
   readOnly?: boolean;
   badge?: string;
 }) {
+  const adjustable = !readOnly;
+  const nudge = (direction: 1 | -1) => {
+    const base = Number.isFinite(value) ? value : (min ?? 0);
+    let next = base + direction * step;
+    if (min !== undefined) next = Math.max(min, next);
+    if (max !== undefined) next = Math.min(max, next);
+    onChange(roundTo(next, stepDecimals(step)));
+  };
+
   return (
     <div className={`field ${readOnly ? "is-calculated" : ""}`}>
       <span className="field-label-row">
@@ -54,23 +129,31 @@ function NumberField({
         </span>
         {labelAction}
       </span>
-      <label className={`input-wrap ${readOnly ? "readonly" : ""}`}>
-        <input
-          type="number"
-          inputMode="decimal"
-          aria-label={`${label} ${unit}`}
-          value={Number.isFinite(value) ? value : ""}
-          step={step}
-          min={min}
-          max={max}
-          readOnly={readOnly}
-          onChange={(event) =>
-            onChange(event.target.value === "" ? Number.NaN : Number(event.target.value))
-          }
-          onWheel={(event) => event.currentTarget.blur()}
-        />
-        <span>{unit}</span>
-      </label>
+      <div className={`stepper ${adjustable ? "" : "no-step"}`}>
+        {adjustable ? (
+          <StepButton direction={-1} label={`Decrease ${label}`} onStep={() => nudge(-1)} />
+        ) : null}
+        <label className={`input-wrap ${readOnly ? "readonly" : ""}`}>
+          <input
+            type="text"
+            inputMode="decimal"
+            pattern="-?[0-9]*[.,]?[0-9]*"
+            autoComplete="off"
+            spellCheck={false}
+            aria-label={`${label} ${unit}`}
+            value={Number.isFinite(value) ? value : ""}
+            readOnly={readOnly}
+            onChange={(event) =>
+              onChange(event.target.value.trim() === "" ? Number.NaN : Number(event.target.value.replace(",", ".")))
+            }
+            onWheel={(event) => event.currentTarget.blur()}
+          />
+          <span>{unit}</span>
+        </label>
+        {adjustable ? (
+          <StepButton direction={1} label={`Increase ${label}`} onStep={() => nudge(1)} />
+        ) : null}
+      </div>
       {hint ? <small>{hint}</small> : null}
     </div>
   );
@@ -381,6 +464,11 @@ export default function Home() {
         : "Heating duty";
   const meanTemperature = (safeTemp(input.startTemperature) + safeTemp(input.finishTemperature)) / 2;
   const glycol = glycolMixProperties(input.glycolPercent, meanTemperature);
+  const minApproach = Number.isFinite(input.minimumApproach) ? Math.max(0, input.minimumApproach) : 0;
+  const approachMargin = result.isCooling
+    ? safeTemp(input.finishTemperature) - (safeTemp(input.sourceFlowTemperature) + minApproach)
+    : safeTemp(input.sourceFlowTemperature) - minApproach - safeTemp(input.finishTemperature);
+  const tempLift = safeTemp(input.finishTemperature) - safeTemp(input.startTemperature);
 
   const selectApplication = (next: Application) => {
     setInput((current) => {
@@ -689,10 +777,66 @@ export default function Home() {
               </div>
             </section>
 
+            <section className="panel section-panel" id="temperatures" aria-label="Temperatures">
+              <div className="panel-heading">
+                <div>
+                  <p className="section-kicker">3 · Temperatures</p>
+                  <h2>Temperatures</h2>
+                </div>
+                <span className="ambient-chip">
+                  {result.isCooling ? "Cool-down" : "Heat-up"} {format(Math.abs(tempLift), 0)} K
+                </span>
+              </div>
+              <p className="section-intro">
+                Process, environment and primary temperatures in one place. Losses, duty and flow update live from these values.
+              </p>
+              <div className="temp-groups">
+                <div className="temp-group">
+                  <h3>Process</h3>
+                  <NumberField label="Start temperature" value={input.startTemperature} onChange={(value) => patch("startTemperature", value)} unit="°C" step={1} />
+                  <NumberField label="Desired temperature" value={input.finishTemperature} onChange={(value) => patch("finishTemperature", value)} unit="°C" step={1} />
+                </div>
+                <div className="temp-group">
+                  <h3>Environment</h3>
+                  <NumberField label="Ambient temperature" value={input.ambient} onChange={(value) => patch("ambient", value)} unit="°C" step={1} />
+                  {input.topType === "open" ? (
+                    <NumberField label="Relative humidity" value={input.humidity} onChange={(value) => patch("humidity", value)} unit="%" step={5} min={0} max={100} />
+                  ) : (
+                    <p className="temp-note">Humidity only applies to open tops.</p>
+                  )}
+                </div>
+                <div className="temp-group">
+                  <h3>Primary source</h3>
+                  <NumberField
+                    label={result.isCooling ? "Chilled source temperature" : "Primary flow temperature"}
+                    value={input.sourceFlowTemperature}
+                    onChange={(value) => patch("sourceFlowTemperature", value)}
+                    unit="°C"
+                    step={1}
+                    hint="Source temperature entering the plate heat exchanger."
+                  />
+                  <NumberField
+                    label="Minimum approach"
+                    value={input.minimumApproach}
+                    onChange={(value) => patch("minimumApproach", value)}
+                    unit="K"
+                    step={0.5}
+                    min={0}
+                    hint="Minimum source-to-process temperature difference."
+                  />
+                </div>
+              </div>
+              <p className={`temp-summary ${approachMargin <= 0 ? "temp-summary-bad" : ""}`}>
+                {approachMargin <= 0
+                  ? "Source and approach cannot reach the desired temperature. Adjust the primary temperature or the approach."
+                  : `${format(approachMargin, 1)} K approach margin at the desired temperature.`}
+              </p>
+            </section>
+
             <section className={`panel section-panel ${result.resultsReady ? "" : "is-gated"}`}>
               <div className="panel-heading">
                 <div>
-                  <p className="section-kicker">3 · Surface losses</p>
+                  <p className="section-kicker">4 · Surface losses</p>
                   <h2>{input.topType === "open" ? "Open-top conditions" : "Closed tank losses"}</h2>
                 </div>
                 <span className="ambient-chip">{format(input.ambient, 0)}°C ambient</span>
@@ -758,13 +902,8 @@ export default function Home() {
                       <p className="override-note">Insulation losses overridden to {format(input.lossOverrideKw, 2)} kW at target temperature.</p>
                     ) : null}
                   </div>
-                  <div className="temperature-inputs">
-                    <NumberField label="Ambient temperature" value={input.ambient} onChange={(value) => patch("ambient", value)} unit="°C" step={1} />
-                    <NumberField label="Start temperature" value={input.startTemperature} onChange={(value) => patch("startTemperature", value)} unit="°C" step={1} />
-                    <NumberField label="Target temperature" value={input.finishTemperature} onChange={(value) => patch("finishTemperature", value)} unit="°C" step={1} />
-                    {input.topType === "open" ? (
-                      <NumberField label="Relative humidity" value={input.humidity} onChange={(value) => patch("humidity", value)} unit="%" step={5} min={0} />
-                    ) : null}
+                  <div className="loss-side">
+                    <h3>Loss adjustments</h3>
                     <label className="toggle-row">
                       <span>
                         <b>Override insulation losses</b>
@@ -796,17 +935,28 @@ export default function Home() {
                         hint="Scaled with temperature difference from ambient during heat-up."
                       />
                     ) : null}
+                    {input.topType === "open" ? (
+                      <NumberField
+                        label="Evaporation adjustment"
+                        value={input.evaporationFactor}
+                        onChange={(value) => patch("evaporationFactor", value)}
+                        unit="%"
+                        step={10}
+                        min={0}
+                        hint="Evaporation assumes water vapour pressure unless corrected. Use 100% for plain water."
+                      />
+                    ) : null}
                   </div>
                 </div>
               ) : null}
             </section>
           </>
         ) : (
-          <section className="panel section-panel">
+          <section className="panel section-panel" id="temperatures" aria-label="Temperatures">
             <div className="panel-heading">
               <div>
-                <p className="section-kicker">2 · Temperature change</p>
-                <h2>{result.isCooling ? "Circuit cool-down" : "Circuit heat-up"}</h2>
+                <p className="section-kicker">2 · Temperatures</p>
+                <h2>Temperatures</h2>
               </div>
               <span className="ambient-chip">{application.label}</span>
             </div>
@@ -816,7 +966,7 @@ export default function Home() {
             </p>
             <div className="closed-circuit-inputs">
               <NumberField label="Start temperature" value={input.startTemperature} onChange={(value) => patch("startTemperature", value)} unit="°C" step={1} />
-              <NumberField label="Target temperature" value={input.finishTemperature} onChange={(value) => patch("finishTemperature", value)} unit="°C" step={1} />
+              <NumberField label="Desired temperature" value={input.finishTemperature} onChange={(value) => patch("finishTemperature", value)} unit="°C" step={1} />
               <NumberField label="Ambient temperature" value={input.ambient} onChange={(value) => patch("ambient", value)} unit="°C" step={1} />
             </div>
           </section>
@@ -825,7 +975,7 @@ export default function Home() {
         <section className={`panel section-panel recovery-panel ${result.resultsReady ? "" : "is-gated"}`}>
           <div className="panel-heading recovery-heading">
             <div>
-              <p className="section-kicker">{input.application === "tank" ? "4" : "3"} · Recovery</p>
+              <p className="section-kicker">{input.application === "tank" ? "5" : "3"} · Recovery</p>
               <h2>Duty, ΔT and circulation</h2>
             </div>
             <div className="segmented" role="group" aria-label="Recovery calculation mode">
@@ -863,7 +1013,7 @@ export default function Home() {
                   />
                 ) : (
                   <NumberField
-                    label="Desired recovery time"
+                    label="Target recovery time"
                     value={input.desiredMinutes}
                     onChange={(value) => patch("desiredMinutes", value)}
                     unit="min"
@@ -953,25 +1103,12 @@ export default function Home() {
                   </button>
                 )}
                 {input.application === "tank" ? (
-                  <>
-                    <NumberField
-                      label={result.isCooling ? "Chilled source temperature" : "Primary flow temperature"}
-                      value={input.sourceFlowTemperature}
-                      onChange={(value) => patch("sourceFlowTemperature", value)}
-                      unit="°C"
-                      step={1}
-                      hint="Source temperature entering the plate heat exchanger."
-                    />
-                    <NumberField
-                      label="Minimum approach"
-                      value={input.minimumApproach}
-                      onChange={(value) => patch("minimumApproach", value)}
-                      unit="K"
-                      step={0.5}
-                      min={0}
-                      hint="Minimum source-to-process temperature difference."
-                    />
-                  </>
+                  <p className="primary-summary">
+                    <span>
+                      Source {format(safeTemp(input.sourceFlowTemperature), 0)}°C · approach {format(minApproach, 1)} K · {format(approachMargin, 1)} K margin at target
+                    </span>
+                    <a href="#temperatures">Edit temperatures</a>
+                  </p>
                 ) : null}
                 <NumberField
                   label="Additional continuous load"
@@ -1074,7 +1211,7 @@ export default function Home() {
               <b>Advanced assumptions</b>
               <small>
                 Glycol, fluid properties
-                {input.application === "tank" ? ", shell mass and evaporation" : ""}
+                {input.application === "tank" ? " and shell mass" : ""}
               </small>
             </span>
             <span className="summary-plus">+</span>
@@ -1085,7 +1222,7 @@ export default function Home() {
                 <span className="field-label-row">
                   <span className="field-label">Fluid location &amp; circuit model</span>
                 </span>
-                <div className="segmented" role="group" aria-label="Fluid location">
+                <div className="segmented segmented-stack" role="group" aria-label="Fluid location">
                   <button
                     type="button"
                     className={input.fluidLocation !== "circuit-only" ? "active" : ""}
@@ -1130,7 +1267,7 @@ export default function Home() {
               </div>
             ) : null}
 
-            <label className="field glycol-field">
+            <div className="field glycol-field">
               <span className="field-label-row">
                 <span className="field-label">
                   Aqueous Ethylene Glycol (volume)
@@ -1138,19 +1275,35 @@ export default function Home() {
                 </span>
                 <span className="glycol-readout">{format(input.glycolPercent, 0)}% vol</span>
               </span>
-              <input
-                type="range"
-                min={0}
-                max={30}
-                step={1}
-                value={input.glycolPercent}
-                aria-label="Aqueous ethylene glycol volume percent"
-                onChange={(event) => setGlycol(Number(event.target.value))}
-              />
+              <span className="glycol-slider-row">
+                <StepButton
+                  direction={-1}
+                  label="Decrease glycol percent"
+                  onStep={() =>
+                    setGlycol(clamp(Math.round(Number.isFinite(input.glycolPercent) ? input.glycolPercent : 0) - 1, 0, 30))
+                  }
+                />
+                <input
+                  type="range"
+                  min={0}
+                  max={30}
+                  step={1}
+                  value={input.glycolPercent}
+                  aria-label="Aqueous ethylene glycol volume percent"
+                  onChange={(event) => setGlycol(Number(event.target.value))}
+                />
+                <StepButton
+                  direction={1}
+                  label="Increase glycol percent"
+                  onStep={() =>
+                    setGlycol(clamp(Math.round(Number.isFinite(input.glycolPercent) ? input.glycolPercent : 0) + 1, 0, 30))
+                  }
+                />
+              </span>
               <small>
                 0–30% by volume aqueous Ethylene Glycol (DOWTHERM SR-1 technical data). Percentage by volume of pure glycol (not commercial concentrate). Does not represent propylene glycol.
               </small>
-            </label>
+            </div>
             <NumberField
               label={input.application === "tank" && input.fluidLocation === "circuit-only" ? "Bath density (water)" : "Fluid density"}
               value={input.fluidOverridden ? input.density : roundTo(result.density, 1)}
@@ -1210,18 +1363,7 @@ export default function Home() {
               </button>
             )}
             {input.application === "tank" ? (
-              <>
-                <NumberField label="Tank steel mass" value={input.steelMass} onChange={(value) => patch("steelMass", value)} unit="kg" step={10} min={0} />
-                <NumberField
-                  label="Evaporation adjustment"
-                  value={input.evaporationFactor}
-                  onChange={(value) => patch("evaporationFactor", value)}
-                  unit="%"
-                  step={10}
-                  min={0}
-                  hint="Evaporation rate assumes water vapour pressure unless manually corrected. Enter a custom factor (e.g. 100% for water) to reflect covers or process chemistry."
-                />
-              </>
+              <NumberField label="Tank steel mass" value={input.steelMass} onChange={(value) => patch("steelMass", value)} unit="kg" step={10} min={0} />
             ) : null}
           </div>
 
