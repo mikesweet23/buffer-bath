@@ -1,10 +1,16 @@
 const BASE = new URL('./', self.location.href).href;
 const PREFIX = 'buffer-bath-' + new URL(BASE).pathname + '-';
-const CACHE = PREFIX + 'standalone-v3';
+const CACHE = PREFIX + 'standalone-v4';
 const HOME = new URL('./', BASE).href;
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll([
-    HOME, new URL('manifest.webmanifest', BASE).href, new URL('favicon.svg', BASE).href
+    HOME,
+    new URL('manifest.webmanifest', BASE).href,
+    new URL('favicon.svg', BASE).href,
+    new URL('apple-touch-icon.png', BASE).href,
+    new URL('icons/icon-192.png', BASE).href,
+    new URL('icons/icon-512.png', BASE).href,
+    new URL('icons/icon-maskable-512.png', BASE).href
   ])));
   self.skipWaiting();
 });

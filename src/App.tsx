@@ -395,6 +395,143 @@ function ResultPanel({
   );
 }
 
+type InstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
+
+function isIosDevice() {
+  if (typeof navigator === "undefined") return false;
+  return (
+    /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+function isStandaloneDisplay() {
+  if (typeof window === "undefined") return false;
+  const standalone = (window.navigator as Navigator & { standalone?: boolean }).standalone;
+  return (
+    standalone === true ||
+    window.matchMedia("(display-mode: standalone)").matches ||
+    document.referrer.startsWith("android-app://")
+  );
+}
+
+function InstallDialog({
+  initialTab,
+  canPrompt,
+  onInstallNow,
+  onClose,
+}: {
+  initialTab: "ios" | "android";
+  canPrompt: boolean;
+  onInstallNow: () => void;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<"ios" | "android">(initialTab);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [onClose]);
+
+  return (
+    <div className="install-overlay" onClick={onClose}>
+      <div
+        className="install-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Install this app"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="install-head">
+          <div>
+            <p className="section-kicker">Install</p>
+            <h2>Add to Home Screen</h2>
+          </div>
+          <button type="button" className="install-close" onClick={onClose} aria-label="Close install instructions">
+            ×
+          </button>
+        </div>
+        <div className="segmented" role="tablist" aria-label="Platform">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "ios"}
+            className={tab === "ios" ? "active" : ""}
+            onClick={() => setTab("ios")}
+          >
+            iPhone / iPad
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "android"}
+            className={tab === "android" ? "active" : ""}
+            onClick={() => setTab("android")}
+          >
+            Android
+          </button>
+        </div>
+        {tab === "ios" ? (
+          <ol className="install-steps">
+            <li>
+              <b>Open this page in Safari.</b>
+              <span>Apple only offers Add to Home Screen from Safari, not from Chrome or other browsers.</span>
+            </li>
+            <li>
+              <b>Tap the Share button.</b>
+              <span>The square with an arrow pointing up, at the bottom of Safari on iPhone or the top on iPad.</span>
+            </li>
+            <li>
+              <b>Tap “Add to Home Screen”.</b>
+              <span>Scroll down the share sheet if you do not see it at first.</span>
+            </li>
+            <li>
+              <b>Tap Add.</b>
+              <span>The planner gets its own Home Screen icon and opens full-screen. It keeps working offline after the first load.</span>
+            </li>
+          </ol>
+        ) : (
+          <>
+            {canPrompt ? (
+              <div className="install-now-banner">
+                <span>One-tap install is available on this device.</span>
+                <button type="button" className="install-now" onClick={onInstallNow}>
+                  Install now
+                </button>
+              </div>
+            ) : null}
+            <ol className="install-steps">
+              <li>
+                <b>Open the browser menu.</b>
+                <span>In Chrome tap the three-dot menu top-right; in Samsung Internet tap ☰ bottom-right.</span>
+              </li>
+              <li>
+                <b>Tap “Add to Home screen” or “Install app”.</b>
+                <span>The exact wording depends on the browser.</span>
+              </li>
+              <li>
+                <b>Confirm Add / Install.</b>
+                <span>The planner gets its own Home Screen icon and opens full-screen. It keeps working offline after the first load.</span>
+              </li>
+            </ol>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function hydrateInputs(parsed: Partial<Inputs> & { maxCircuitDeltaT?: number }): Inputs {
   const stored = { ...DEFAULTS, ...parsed };
   stored.construction = LEGACY_CONSTRUCTIONS[stored.construction] ?? stored.construction;
@@ -418,6 +555,10 @@ function hydrateInputs(parsed: Partial<Inputs> & { maxCircuitDeltaT?: number }):
 export default function Home() {
   const [input, setInput] = useState<Inputs>(DEFAULTS);
   const [loaded, setLoaded] = useState(false);
+  const [installOpen, setInstallOpen] = useState(false);
+  const [canPromptInstall, setCanPromptInstall] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const deferredPrompt = useRef<InstallPromptEvent | null>(null);
 
   useEffect(() => {
     let storedInput: Inputs | null = null;
@@ -446,6 +587,44 @@ export default function Home() {
       navigator.serviceWorker.register("./sw.js").catch(() => undefined);
     }
   }, []);
+
+  useEffect(() => {
+    setIsInstalled(isStandaloneDisplay());
+    const onPrompt = (event: Event) => {
+      event.preventDefault();
+      deferredPrompt.current = event as InstallPromptEvent;
+      setCanPromptInstall(true);
+    };
+    const onInstalled = () => {
+      deferredPrompt.current = null;
+      setCanPromptInstall(false);
+      setIsInstalled(true);
+      setInstallOpen(false);
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  const installNow = async () => {
+    const prompt = deferredPrompt.current;
+    if (!prompt) {
+      setInstallOpen(true);
+      return;
+    }
+    try {
+      await prompt.prompt();
+      await prompt.userChoice;
+    } catch {
+      // Dismissed or refused; the instructions stay available.
+    } finally {
+      deferredPrompt.current = null;
+      setCanPromptInstall(false);
+    }
+  };
 
   const patch = <K extends keyof Inputs>(key: K, value: Inputs[K]) => {
     setInput((current) => ({ ...current, [key]: value }));
@@ -573,6 +752,15 @@ export default function Home() {
             <button className="reset-button ghost" type="button" onClick={reset}>
               Reset example
             </button>
+            {!isInstalled ? (
+              <button
+                className="reset-button ghost"
+                type="button"
+                onClick={canPromptInstall ? installNow : () => setInstallOpen(true)}
+              >
+                Install app
+              </button>
+            ) : null}
           </div>
         </div>
       </header>
@@ -1408,8 +1596,21 @@ export default function Home() {
         <footer>
           <p>Buffer and Bath Heat Planner · Indicative engineering calculation</p>
           <p>Verify final exchanger selection, materials, fouling allowance and pressure drop with the manufacturer.</p>
+          {!isInstalled ? (
+            <button type="button" className="footer-install" onClick={() => setInstallOpen(true)}>
+              Install this app on your phone →
+            </button>
+          ) : null}
         </footer>
       </div>
+      {installOpen ? (
+        <InstallDialog
+          initialTab={isIosDevice() ? "ios" : "android"}
+          canPrompt={canPromptInstall}
+          onInstallNow={installNow}
+          onClose={() => setInstallOpen(false)}
+        />
+      ) : null}
     </main>
   );
 }

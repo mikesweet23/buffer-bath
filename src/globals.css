@@ -65,7 +65,7 @@ button {
 .app-header {
   position: relative;
   overflow: hidden;
-  padding: 42px 24px 96px;
+  padding: calc(42px + env(safe-area-inset-top, 0px)) 24px 96px;
   color: white;
   background:
     radial-gradient(circle at 80% 15%, rgba(46, 144, 255, 0.28), transparent 28rem),
@@ -201,7 +201,7 @@ h1 {
   z-index: 2;
   width: min(1180px, calc(100% - 32px));
   margin: -64px auto 0;
-  padding-bottom: 48px;
+  padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
 }
 
 .panel {
@@ -1163,8 +1163,9 @@ select {
 
 footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 20px;
+  gap: 6px 20px;
   padding: 26px 6px 0;
   color: #75898d;
   font-size: 0.68rem;
@@ -1210,7 +1211,7 @@ footer p {
 
 @media (max-width: 620px) {
   .app-header {
-    padding: 30px 18px 84px;
+    padding: calc(30px + env(safe-area-inset-top, 0px)) 18px 84px;
   }
 
   .header-inner {
@@ -1602,6 +1603,151 @@ body {
   .segmented-stack {
     grid-template-columns: 1fr;
   }
+}
+
+.install-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  background: rgba(8, 19, 31, 0.55);
+}
+
+@media (min-width: 640px) {
+  .install-overlay {
+    align-items: center;
+  }
+}
+
+.install-dialog {
+  width: min(520px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 22px;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 24px 64px rgba(8, 19, 31, 0.35);
+}
+
+.install-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.install-head h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  letter-spacing: -0.02em;
+}
+
+.install-close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfdff;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.install-dialog .segmented {
+  margin: 14px 0 6px;
+}
+
+.install-now-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #c5daf0;
+  border-radius: 12px;
+  background: var(--brand-pale);
+  font-size: 0.8rem;
+}
+
+.install-now {
+  min-height: 44px;
+  padding: 10px 18px;
+  color: #fff;
+  border: 0;
+  border-radius: 10px;
+  background: var(--brand);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.install-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: install-step;
+}
+
+.install-steps li {
+  position: relative;
+  padding: 12px 12px 12px 48px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfdff;
+  counter-increment: install-step;
+}
+
+.install-steps li::before {
+  content: counter(install-step);
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  color: #fff;
+  border-radius: 50%;
+  background: var(--brand);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.install-steps b {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 0.84rem;
+}
+
+.install-steps span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.footer-install {
+  flex: none;
+  min-height: 44px;
+  padding: 0;
+  color: var(--brand-dark);
+  border: 0;
+  background: none;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 @media (pointer: coarse) {
